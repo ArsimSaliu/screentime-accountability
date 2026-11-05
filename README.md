@@ -1,5 +1,7 @@
 # Leash: screen time with accountability partners
 
+[![iOS build (Xcode)](https://github.com/ArsimSaliu/screentime-accountability/actions/workflows/ios-build.yml/badge.svg)](https://github.com/ArsimSaliu/screentime-accountability/actions/workflows/ios-build.yml)
+
 Set your own iOS screen time limits. When you hit one and really need more time,
 your friends approve or deny the extension remotely, from the iOS app or the web.
 
