@@ -1,6 +1,6 @@
 import type { Limit, PendingLimitChange, ProfileSummary, RequestStatus, UserStats } from './models';
 
-export function displayName(p: ProfileSummary | null | undefined): string {
+export function displayName(p: Pick<ProfileSummary, 'username' | 'display_name'> | null | undefined): string {
   if (!p) return 'Someone';
   return p.display_name?.trim() || `@${p.username}`;
 }
@@ -80,4 +80,23 @@ export function describeLimit(l: Pick<Limit, 'kind' | 'minutes' | 'start_minute'
     return `Blocked ${formatClock(l.start_minute)}–${formatClock(l.end_minute)} every day`;
   }
   return `${formatMinutes(l.minutes)} ${l.kind === 'daily' ? 'per day' : 'per session'}`;
+}
+
+export type Badge = { id: string; emoji: string; label: string; earned: boolean };
+
+/** Milestones derived from stats; unearned ones are shown greyed out as goals. */
+export function badgesFor(stats: UserStats): Badge[] {
+  const best = stats.best_streak_days;
+  return [
+    { id: 'streak3', emoji: '🌱', label: '3-day streak', earned: best >= 3 },
+    { id: 'streak7', emoji: '🔥', label: '7-day streak', earned: best >= 7 },
+    { id: 'streak30', emoji: '🏆', label: '30-day streak', earned: best >= 30 },
+    { id: 'helper', emoji: '🤝', label: 'Answered 5 friends', earned: stats.partner.votes >= 5 },
+    {
+      id: 'fast',
+      emoji: '⚡',
+      label: 'Replies within 5 min',
+      earned: stats.partner.votes >= 3 && (stats.partner.avg_response_minutes ?? 99) <= 5,
+    },
+  ];
 }

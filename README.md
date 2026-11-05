@@ -23,7 +23,8 @@ supabase/
 | 3 | Real Screen Time blocking (FamilyControls / DeviceActivity / ManagedSettings) | ✅ code done, needs Apple entitlement to run on a device |
 | 4 | Hardening: loosening takes 24 h, partner-removal cooldown, emergency unlock, tamper alerts | ✅ done |
 | 5 | Streaks & stats, weekly digest, account deletion, privacy policy, TestFlight setup | ✅ done |
-| 6 | Home-screen widget, Live Activity for "waiting for approval", Apple Watch approvals | ideas |
+| 6 | Invite links, counter-offers, nudges, bedtime/downtime limits, onboarding checklist, quick reasons, badges, haptics | ✅ done |
+| 7 | Widget, Live Activity, Apple Watch, Android: see [docs/ROADMAP.md](docs/ROADMAP.md) | ideas |
 
 Without Screen Time access (Expo Go, simulator, or before Apple approves the entitlement), the app's
 **"Request more time"** button still works, so you can test the whole approval loop end to end.
@@ -250,7 +251,20 @@ For the App Store listing you'll need:
 | `npm run typecheck` | Type-check all workspaces |
 | `npm run db:push` | Apply migrations to the linked Supabase project |
 | `npm run db:types` | Regenerate `packages/shared/src/database.types.ts` |
-| `deno test supabase/functions` | Unit tests for edge-function helpers |
+| `npm run test:db` | Run every migration on in-memory Postgres and test the rules (no Docker needed) |
+| `npm run test:functions` | Unit tests for edge-function helpers (needs [Deno](https://deno.com)) |
+
+## Growth & UX features (Phase 6)
+
+- **Invite links:** Partners → *Share an invite link* (app) or *Create invite link* (web). The friend opens
+  `…/join/<code>`, signs in and becomes your partner in one tap (links last 7 days). In the app the same
+  code opens via `leash://join/<code>`.
+- **Counter-offers:** when approving, a partner can offer less (e.g. 10 of the 30 minutes asked for). With
+  several approvers, the smallest offer wins. Works in the app, on the web and in email links.
+- **Nudges:** if a request has waited 5 minutes, partners who haven't answered get one reminder.
+- **Downtime (bedtime) limits:** block the chosen apps every day between two times (e.g. 22:00–07:00).
+  Windows crossing midnight are handled. Changing the window counts as loosening, so it takes 24 h.
+- **Polish:** getting-started checklist on Home, one-tap reason chips, streak and partner badges, haptics.
 
 ## Streaks & weekly digest (Phase 5)
 

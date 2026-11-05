@@ -4,6 +4,7 @@ import {
   type Limit,
   type LimitForm,
   type ProfileSummary,
+  type InviteLinkInfo,
   type UserStats,
   type PartnershipWithProfiles,
   type RequestWithDetails,
@@ -110,11 +111,22 @@ export async function listPartnerRequests(userId: string, limit = 30): Promise<R
   return data as unknown as RequestWithDetails[];
 }
 
-export async function castVote(requestId: string, voterId: string, decision: VoteDecision, comment?: string) {
+/** Vote on a request. `minutes` lets an approving partner offer less than was asked for. */
+export async function castVote(
+  requestId: string,
+  voterId: string,
+  decision: VoteDecision,
+  comment?: string,
+  minutes?: number,
+) {
   unwrap(
-    await supabase
-      .from('request_votes')
-      .insert({ request_id: requestId, voter_id: voterId, decision, comment: comment || null }),
+    await supabase.from('request_votes').insert({
+      request_id: requestId,
+      voter_id: voterId,
+      decision,
+      comment: comment || null,
+      minutes: decision === 'approve' ? (minutes ?? null) : null,
+    }),
   );
 }
 
@@ -249,4 +261,27 @@ export async function getStats(userId: string): Promise<UserStats | null> {
 export async function deleteAccount(): Promise<void> {
   const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
   if (error) throw error;
+}
+
+// ---------- Invite links ----------
+export async function createInviteLink(): Promise<string> {
+  const { data, error } = await supabase.rpc('create_invite_link');
+  if (error) throw error;
+  return data;
+}
+
+export async function getInviteLinkInfo(code: string): Promise<InviteLinkInfo> {
+  const { data, error } = await supabase.rpc('invite_link_info', { p_code: code });
+  if (error) throw error;
+  return data as InviteLinkInfo;
+}
+
+export async function acceptInviteLink(code: string): Promise<void> {
+  unwrap(await supabase.rpc('accept_invite_link', { p_code: code }));
+}
+
+/** Public URL to share; falls back to the app scheme if no web URL is configured. */
+export function inviteUrl(code: string): string {
+  const web = process.env.EXPO_PUBLIC_WEB_URL?.replace(/\/$/, '');
+  return web ? `${web}/join/${code}` : `leash://join/${code}`;
 }

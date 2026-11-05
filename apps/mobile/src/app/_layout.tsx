@@ -59,6 +59,7 @@ function RootNavigator() {
           <Stack.Screen name="limit/edit" options={{ presentation: 'modal', title: 'Limit' }} />
           <Stack.Screen name="request/new" options={{ presentation: 'modal', title: 'Request more time' }} />
           <Stack.Screen name="request/[id]" options={{ title: 'Request' }} />
+          <Stack.Screen name="join/[code]" options={{ presentation: 'modal', title: 'Partner invite' }} />
         </Stack.Protected>
       </Stack>
     </>

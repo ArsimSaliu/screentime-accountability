@@ -1,5 +1,8 @@
 import {
+  badgesFor,
+  describeLimit,
   describePendingChange,
+  formatClock,
   displayName,
   formatStreak,
   summarizeWeek,
@@ -52,6 +55,15 @@ export default function Home() {
       <ErrorText error={error} />
       {data?.stats && <StatsCard stats={data.stats} />}
 
+      {data && (
+        <GettingStarted
+          hasPartner={data.partnerCount > 0}
+          hasLimit={data.limits.length > 0}
+          screenTime={stStatus}
+          hasApps={data.limits.some((l) => !!ScreenTime.getSelection(l.id))}
+        />
+      )}
+
       <ScreenTimeCard status={stStatus} onConnect={async () => setStStatus(await ScreenTime.requestAuthorization())} />
 
       {active ? (
@@ -96,6 +108,68 @@ function StatsCard({ stats }: { stats: UserStats }) {
       </View>
       <Body style={{ fontSize: 28, fontWeight: '800', color: t.primary }}>{formatStreak(stats.streak_days)}</Body>
       <Body muted>This week: {summarizeWeek(stats)}</Body>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+        {badgesFor(stats).map((b) => (
+          <View
+            key={b.id}
+            accessibilityLabel={`${b.label}${b.earned ? '' : ' (not earned yet)'}`}
+            style={{
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: t.border,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              opacity: b.earned ? 1 : 0.35,
+            }}
+          >
+            <Body style={{ fontSize: 13 }}>
+              {b.emoji} {b.label}
+            </Body>
+          </View>
+        ))}
+      </View>
+    </Card>
+  );
+}
+
+/** First-run checklist; disappears once everything is set up. */
+function GettingStarted({
+  hasPartner,
+  hasLimit,
+  hasApps,
+  screenTime,
+}: {
+  hasPartner: boolean;
+  hasLimit: boolean;
+  hasApps: boolean;
+  screenTime: ScreenTimeStatus;
+}) {
+  const t = useTheme();
+  const steps = [
+    { done: hasPartner, label: 'Add an accountability partner', go: () => router.push('/partners') },
+    ...(screenTime === 'unsupported'
+      ? []
+      : [{ done: screenTime === 'approved', label: 'Allow Screen Time access', go: undefined }]),
+    { done: hasLimit, label: 'Create your first limit', go: () => router.push('/limit/edit') },
+    ...(screenTime === 'unsupported'
+      ? []
+      : [{ done: hasApps, label: 'Choose which apps it blocks', go: () => router.push('/limit/edit') }]),
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  if (doneCount === steps.length) return null;
+  return (
+    <Card>
+      <Body style={{ fontWeight: '800' }}>
+        Get started · {doneCount}/{steps.length}
+      </Body>
+      {steps.map((s) => (
+        <Pressable key={s.label} disabled={s.done || !s.go} onPress={s.go}>
+          <Body style={{ color: s.done ? t.muted : t.text, textDecorationLine: s.done ? 'line-through' : 'none' }}>
+            {s.done ? '✅' : '⬜️'} {s.label}
+            {!s.done && s.go ? ' ›' : ''}
+          </Body>
+        </Pressable>
+      ))}
     </Card>
   );
 }
@@ -133,10 +207,14 @@ function LimitRow({ limit }: { limit: Limit }) {
       <Card style={{ opacity: limit.active ? 1 : 0.5 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Body style={{ fontWeight: '700' }}>{limit.name}</Body>
-          <Body style={{ color: t.primary, fontWeight: '700' }}>{formatMinutes(limit.minutes)}</Body>
+          <Body style={{ color: t.primary, fontWeight: '700' }}>
+            {limit.kind === 'downtime' && limit.start_minute != null && limit.end_minute != null
+              ? `🌙 ${formatClock(limit.start_minute)}–${formatClock(limit.end_minute)}`
+              : formatMinutes(limit.minutes)}
+          </Body>
         </View>
         <Body muted>
-          {limit.kind === 'daily' ? 'Per day' : 'Per session'} · {STRICTNESS_INFO[limit.strictness].label}
+          {describeLimit(limit)} · {STRICTNESS_INFO[limit.strictness].label}
           {limit.active ? '' : ' · paused'}
         </Body>
         {ScreenTime.isAvailable && <Body muted>{ScreenTime.describeSelection(ScreenTime.getSelection(limit.id))}</Body>}

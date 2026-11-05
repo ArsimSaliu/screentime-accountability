@@ -1,10 +1,19 @@
 import { displayName, relativeTime, type PartnershipWithProfiles } from '@screentime/shared';
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { Alert, Share, View } from 'react-native';
 import { Body, Button, Card, ErrorText, Field, Screen, SectionTitle } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useRealtime } from '../../hooks/useRealtime';
-import { acceptInvite, cancelPartnerRemoval, invitePartner, listPartnerships, removePartnership } from '../../lib/api';
+import {
+  acceptInvite,
+  cancelPartnerRemoval,
+  createInviteLink,
+  invitePartner,
+  inviteUrl,
+  listPartnerships,
+  removePartnership,
+} from '../../lib/api';
+import { haptic } from '../../lib/haptics';
 import { useUserId } from '../../lib/auth';
 import { friendlyError } from '../../lib/supabase';
 
@@ -27,12 +36,24 @@ export default function Partners() {
     setInviteError(null);
     try {
       await invitePartner(username.trim().replace(/^@/, ''));
+      haptic.success();
       setUsername('');
       await reload();
     } catch (e) {
       setInviteError(friendlyError(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function shareLink() {
+    try {
+      const url = inviteUrl(await createInviteLink());
+      await Share.share({
+        message: `Will you be my accountability partner on Leash? You'd approve (or deny) when I ask for extra screen time. ${url}`,
+      });
+    } catch (e) {
+      Alert.alert('Could not create invite link', friendlyError(e));
     }
   }
 
@@ -72,7 +93,15 @@ export default function Partners() {
                   style={{ flex: 1 }}
                   title="Accept"
                   variant="success"
-                  onPress={() => acceptInvite(p.id).then(reload, (e) => Alert.alert('Error', friendlyError(e)))}
+                  onPress={() =>
+                    acceptInvite(p.id).then(
+                      () => {
+                        haptic.success();
+                        void reload();
+                      },
+                      (e) => Alert.alert('Error', friendlyError(e)),
+                    )
+                  }
                 />
                 <Button
                   style={{ flex: 1 }}
@@ -88,6 +117,7 @@ export default function Partners() {
 
       <SectionTitle>Your accountability partners</SectionTitle>
       <Body muted>These people approve or deny your requests for more time.</Body>
+      <Button title="📨 Share an invite link" onPress={shareLink} />
       {myPartners.map((p) => (
         <Card key={p.id}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -114,7 +144,7 @@ export default function Partners() {
         </Card>
       ))}
       <Field
-        label="Invite by username"
+        label="…or invite by username"
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
@@ -123,7 +153,7 @@ export default function Partners() {
         error={inviteError}
         onSubmitEditing={invite}
       />
-      <Button title="Send invite" onPress={invite} loading={busy} disabled={!username.trim()} />
+      <Button title="Send invite" variant="secondary" onPress={invite} loading={busy} disabled={!username.trim()} />
 
       {iSupport.length > 0 && (
         <>

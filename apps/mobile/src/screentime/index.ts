@@ -2,11 +2,13 @@
  * Screen Time bridge built on `react-native-device-activity`
  * (FamilyControls + DeviceActivity + ManagedSettings).
  *
- * Model, per limit (only `daily` limits block today, see README):
+ * Model, per limit (`daily` and `downtime` limits block; `session` can't be expressed on iOS):
  *   selection id   limit_<id>       the apps/categories the user picked (stored in the App Group)
  *   main activity  limit_<id>       repeats 00:00–23:59; when usage hits `minutes` the
  *                                   DeviceActivityMonitor extension shields the selection,
  *                                   and at midnight (intervalDidStart) it unshields again.
+ *   downtime       limit_<id>       shields at the window start, unshields at the end; a window
+ *                  limit_<id>_late  that crosses midnight is split into two activities.
  *   ext activity   limit_<id>_ext   created when an extension is approved: unshield now,
  *                                   re-shield after N more minutes of usage.
  *
@@ -31,9 +33,12 @@ const LIMIT_EVENT = 'limit_reached';
 const EXT_EVENT = 'extension_used';
 const CONFIG_KEY = (limitId: string) => `leash_cfg_${limitId}`;
 
+const LATE_SUFFIX = '_late';
 const selectionId = (limitId: string) => `${PREFIX}${limitId}`;
 const mainActivity = selectionId;
+const lateActivity = (limitId: string) => `${selectionId(limitId)}${LATE_SUFFIX}`;
 const extActivity = (limitId: string) => `${selectionId(limitId)}${EXT_SUFFIX}`;
+const ID_RE = /^limit_([0-9a-f-]{36})/;
 
 function supported(): boolean {
   try {
@@ -108,15 +113,54 @@ function configureShield() {
 }
 
 function limitIdsOnDevice(): string[] {
-  return RNDA.getActivities()
-    .filter((a) => a.startsWith(PREFIX) && !a.endsWith(EXT_SUFFIX))
-    .map((a) => a.slice(PREFIX.length));
+  const ids = new Set<string>();
+  for (const a of RNDA.getActivities()) {
+    const m = ID_RE.exec(a);
+    if (m && !a.endsWith(EXT_SUFFIX)) ids.add(m[1]);
+  }
+  return [...ids];
+}
+
+const clock = (minute: number, second = 0) => ({ hour: Math.floor(minute / 60), minute: minute % 60, second });
+
+/** Shield during [start, end) every day; split in two when the window crosses midnight. */
+async function startDowntime(id: string, start: number, end: number) {
+  const block = [{ type: 'blockSelection' as const, familyActivitySelectionId: selectionId(id) }];
+  const unblock = [{ type: 'unblockSelection' as const, familyActivitySelectionId: selectionId(id) }];
+  // A window ending exactly at 00:00 doesn't really cross midnight: it ends at 23:59:59.
+  const crosses = end < start && end > 0;
+  const mainEnd = crosses || end === 0 ? { hour: 23, minute: 59, second: 59 } : clock(end);
+
+  // Evening part (or the whole window when it doesn't cross midnight).
+  RNDA.configureActions({ activityName: mainActivity(id), callbackName: 'intervalDidStart', actions: block });
+  RNDA.configureActions({
+    activityName: mainActivity(id),
+    callbackName: 'intervalDidEnd',
+    // When crossing midnight the late part takes over at 00:00, so don't unblock here.
+    actions: crosses ? [] : unblock,
+  });
+  await RNDA.startMonitoring(
+    mainActivity(id),
+    { intervalStart: clock(start), intervalEnd: mainEnd, repeats: true },
+    [],
+  );
+
+  if (crosses) {
+    RNDA.configureActions({ activityName: lateActivity(id), callbackName: 'intervalDidStart', actions: block });
+    RNDA.configureActions({ activityName: lateActivity(id), callbackName: 'intervalDidEnd', actions: unblock });
+    await RNDA.startMonitoring(
+      lateActivity(id),
+      { intervalStart: { hour: 0, minute: 0, second: 0 }, intervalEnd: clock(end), repeats: true },
+      [],
+    );
+  }
 }
 
 function tearDown(limitId: string) {
-  RNDA.stopMonitoring([mainActivity(limitId), extActivity(limitId)]);
+  RNDA.stopMonitoring([mainActivity(limitId), lateActivity(limitId), extActivity(limitId)]);
   RNDA.unblockSelection({ activitySelectionId: selectionId(limitId) }, 'leash:teardown');
   RNDA.cleanUpAfterActivity(mainActivity(limitId));
+  RNDA.cleanUpAfterActivity(lateActivity(limitId));
   RNDA.cleanUpAfterActivity(extActivity(limitId));
   RNDA.userDefaultsRemove(CONFIG_KEY(limitId));
 }
@@ -174,8 +218,8 @@ export const ScreenTime = {
     const wanted = new Map<string, { limit: Limit; token: string }>();
     for (const limit of limits) {
       const token = this.getSelection(limit.id);
-      // Session limits can't be expressed with DeviceActivity thresholds yet: daily only.
-      if (limit.active && limit.kind === 'daily' && token) wanted.set(limit.id, { limit, token });
+      // Session limits can't be expressed with DeviceActivity: daily and downtime only.
+      if (limit.active && limit.kind !== 'session' && token) wanted.set(limit.id, { limit, token });
     }
 
     for (const id of limitIdsOnDevice()) {
@@ -183,11 +227,16 @@ export const ScreenTime = {
     }
 
     for (const [id, { limit, token }] of wanted) {
-      const cfg = `${limit.minutes}:${hash(token)}`;
+      const cfg = `${limit.kind}:${limit.minutes}:${limit.start_minute}:${limit.end_minute}:${hash(token)}`;
       const running = RNDA.getActivities().includes(mainActivity(id));
       if (running && RNDA.userDefaultsGet<string>(CONFIG_KEY(id)) === cfg) continue;
 
-      RNDA.stopMonitoring([mainActivity(id)]);
+      RNDA.stopMonitoring([mainActivity(id), lateActivity(id)]);
+      if (limit.kind === 'downtime' && limit.start_minute != null && limit.end_minute != null) {
+        await startDowntime(id, limit.start_minute, limit.end_minute);
+        RNDA.userDefaultsSet(CONFIG_KEY(id), cfg);
+        continue;
+      }
       RNDA.configureActions({
         activityName: mainActivity(id),
         callbackName: 'eventDidReachThreshold',

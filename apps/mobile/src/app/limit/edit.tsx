@@ -1,6 +1,8 @@
 import {
   describePendingChange,
+  formatClock,
   limitFormSchema,
+  windowLength,
   relativeTime,
   STRICTNESS_INFO,
   type Limit,
@@ -11,6 +13,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Switch, View } from 'react-native';
 import { AppPicker } from '../../components/AppPicker';
+import { TimeStepper } from '../../components/TimeStepper';
 import { useTheme } from '../../components/theme';
 import { Body, Button, Card, Chips, Field, Loading, Screen, SectionTitle } from '../../components/ui';
 import { cancelPendingLimitChange, deleteLimit, getLimit, listMyLimits, saveLimit } from '../../lib/api';
@@ -21,7 +24,15 @@ import { ScreenTime } from '../../screentime';
 const STRICTNESS: Strictness[] = ['relaxed', 'standard', 'strict', 'locked'];
 const MINUTE_PRESETS = [15, 30, 60, 90, 120, 180] as const;
 
-const EMPTY: LimitForm = { name: '', kind: 'daily', minutes: 60, strictness: 'standard', approvals_required: 1 };
+const EMPTY: LimitForm = {
+  name: '',
+  kind: 'daily',
+  minutes: 60,
+  strictness: 'standard',
+  approvals_required: 1,
+  start_minute: 22 * 60,
+  end_minute: 7 * 60,
+};
 
 export default function EditLimit() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -47,6 +58,8 @@ export default function EditLimit() {
             minutes: l.minutes,
             strictness: l.strictness,
             approvals_required: l.approvals_required,
+            start_minute: l.start_minute ?? 22 * 60,
+            end_minute: l.end_minute ?? 7 * 60,
           });
           setActive(l.active);
         }
@@ -58,7 +71,14 @@ export default function EditLimit() {
   const set = <K extends keyof LimitForm>(key: K, value: LimitForm[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   async function save() {
-    const parsed = limitFormSchema.safeParse(form);
+    const isDowntime = form.kind === 'downtime';
+    const parsed = limitFormSchema.safeParse({
+      ...form,
+      // Downtime limits store the window length as `minutes`; other kinds have no window.
+      minutes: isDowntime ? windowLength(form.start_minute!, form.end_minute!) : form.minutes,
+      start_minute: isDowntime ? form.start_minute : null,
+      end_minute: isDowntime ? form.end_minute : null,
+    });
     if (!parsed.success) return setError(parsed.error.issues[0].message);
     if (ScreenTime.isAvailable && !selection) return setError('Choose which apps this limit covers');
     setBusy(true);
@@ -147,23 +167,37 @@ export default function EditLimit() {
 
       <SectionTitle>Type</SectionTitle>
       <Chips
-        options={['daily', 'session'] as const}
+        options={['daily', 'downtime', 'session'] as const}
         value={form.kind}
         onChange={(v) => set('kind', v)}
-        format={(v) => (v === 'daily' ? 'Daily total' : 'Per session')}
+        format={(v) => ({ daily: 'Daily total', downtime: 'Downtime', session: 'Per session' })[v]}
       />
       {form.kind === 'session' && (
         <Body muted>Per-session blocking isn’t supported by iOS yet. This limit is saved but won’t block apps.</Body>
       )}
 
-      <SectionTitle>Minutes</SectionTitle>
-      <Chips options={MINUTE_PRESETS} value={form.minutes as never} onChange={(v) => set('minutes', v)} />
-      <Field
-        label="Custom"
-        value={String(form.minutes)}
-        onChangeText={(v) => set('minutes', Number(v.replace(/\D/g, '')) || 0)}
-        keyboardType="number-pad"
-      />
+      {form.kind === 'downtime' ? (
+        <>
+          <SectionTitle>Blocked between</SectionTitle>
+          <TimeStepper label="From" value={form.start_minute ?? 1320} onChange={(v) => set('start_minute', v)} />
+          <TimeStepper label="Until" value={form.end_minute ?? 420} onChange={(v) => set('end_minute', v)} />
+          <Body muted>
+            Apps are blocked every day from {formatClock(form.start_minute ?? 1320)} to{' '}
+            {formatClock(form.end_minute ?? 420)}.
+          </Body>
+        </>
+      ) : (
+        <>
+          <SectionTitle>Minutes</SectionTitle>
+          <Chips options={MINUTE_PRESETS} value={form.minutes as never} onChange={(v) => set('minutes', v)} />
+          <Field
+            label="Custom"
+            value={String(form.minutes)}
+            onChangeText={(v) => set('minutes', Number(v.replace(/\D/g, '')) || 0)}
+            keyboardType="number-pad"
+          />
+        </>
+      )}
 
       <SectionTitle>Strictness</SectionTitle>
       <Chips

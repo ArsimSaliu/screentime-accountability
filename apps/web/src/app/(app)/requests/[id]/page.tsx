@@ -39,7 +39,7 @@ export default async function RequestPage({ params }: PageProps<'/requests/[id]'
         </p>
       </Card>
 
-      {canVote && <VotePanel requestId={request.id} />}
+      {canVote && <VotePanel requestId={request.id} requested={request.minutes_requested} />}
       {myVote && <p className="text-slate-500">You {myVote.decision === 'approve' ? 'approved' : 'denied'} this request.</p>}
 
       {isMine && request.status === 'pending' && (
@@ -59,6 +59,9 @@ export default async function RequestPage({ params }: PageProps<'/requests/[id]'
             {v.decision === 'approve' ? '✓ Approved' : '✕ Denied'}
           </span>{' '}
           by {displayName(v.voter)}
+          {v.decision === 'approve' && v.minutes && v.minutes < request.minutes_requested
+            ? ` (offered ${formatMinutes(v.minutes)})`
+            : ''}
           {v.comment && <p className="mt-1 text-slate-500">“{v.comment}”</p>}
         </Card>
       ))}

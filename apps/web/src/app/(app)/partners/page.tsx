@@ -4,6 +4,7 @@ import { Button, Card, SectionTitle } from '@/components/ui';
 import { acceptInviteAction, cancelPartnerRemovalAction, removePartnershipAction } from '@/lib/actions';
 import { getPartnerships } from '@/lib/data';
 import { InviteForm } from './invite-form';
+import { InviteLink } from './invite-link';
 
 export default async function PartnersPage() {
   const { userId, partnerships, now } = await getPartnerships();
@@ -72,7 +73,8 @@ export default async function PartnersPage() {
           </Card>
         ))}
       </div>
-      <div className="mt-4">
+      <div className="mt-4 grid gap-3">
+        <InviteLink />
         <InviteForm />
       </div>
 

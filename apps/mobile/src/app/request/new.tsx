@@ -1,4 +1,10 @@
-import { EMERGENCY_MAX_MINUTES, formatMinutes, REQUEST_MINUTE_OPTIONS, requestFormSchema } from '@screentime/shared';
+import {
+  EMERGENCY_MAX_MINUTES,
+  formatMinutes,
+  REASON_TEMPLATES,
+  REQUEST_MINUTE_OPTIONS,
+  requestFormSchema,
+} from '@screentime/shared';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert } from 'react-native';
@@ -6,6 +12,7 @@ import { Body, Button, Card, Chips, ErrorText, Field, Screen, SectionTitle } fro
 import { useAsync } from '../../hooks/useAsync';
 import { createRequest, emergencyUnlock, listMyLimits } from '../../lib/api';
 import { useUserId } from '../../lib/auth';
+import { haptic } from '../../lib/haptics';
 import { friendlyError } from '../../lib/supabase';
 
 const NO_LIMIT = 'none';
@@ -37,8 +44,10 @@ export default function NewRequest() {
         minutes: parsed.data.minutes_requested,
         reason: parsed.data.reason,
       });
+      haptic.success();
       router.replace({ pathname: '/request/[id]', params: { id } });
     } catch (e) {
+      haptic.error();
       setError(friendlyError(e));
       setBusy(false);
     }
@@ -88,6 +97,16 @@ export default function NewRequest() {
       <SectionTitle>How much more time?</SectionTitle>
       <Chips options={REQUEST_MINUTE_OPTIONS} value={minutes as 15} onChange={setMinutes} format={formatMinutes} />
 
+      <SectionTitle>Why?</SectionTitle>
+      <Chips
+        options={['', ...REASON_TEMPLATES]}
+        value={(REASON_TEMPLATES as readonly string[]).includes(reason) ? reason : ''}
+        onChange={(r) => {
+          haptic.tap();
+          setReason(r);
+        }}
+        format={(r) => r || 'Other'}
+      />
       <Field
         label="Reason (your partners will see this)"
         value={reason}

@@ -19,6 +19,7 @@ export async function voteAction(_prev: ActionState, formData: FormData): Promis
   const parsed = voteSchema.safeParse({
     decision: formData.get('decision'),
     comment: formData.get('comment') || undefined,
+    minutes: formData.get('minutes') || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -27,6 +28,7 @@ export async function voteAction(_prev: ActionState, formData: FormData): Promis
     voter_id: userId,
     decision: parsed.data.decision,
     comment: parsed.data.comment || null,
+    minutes: parsed.data.decision === 'approve' ? (parsed.data.minutes ?? null) : null,
   });
   if (error) {
     return { error: error.code === '42501' ? 'This request can no longer be voted on.' : message(error) };
@@ -75,6 +77,21 @@ export async function cancelPendingLimitChangeAction(formData: FormData) {
   const { supabase } = await requireUser();
   await supabase.from('limits').update({ pending_change: null }).eq('id', String(formData.get('id')));
   revalidatePath('/dashboard');
+}
+
+export async function createInviteLinkAction(): Promise<{ code?: string; error?: string }> {
+  const { supabase } = await requireUser();
+  const { data, error } = await supabase.rpc('create_invite_link');
+  if (error) return { error: message(error) };
+  return { code: data };
+}
+
+export async function acceptInviteLinkAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.rpc('accept_invite_link', { p_code: String(formData.get('code')) });
+  if (error) return { error: message(error) };
+  revalidatePath('/partners');
+  redirect('/partners');
 }
 
 export async function onboardingAction(_prev: ActionState, formData: FormData): Promise<ActionState> {

@@ -1,14 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { displayName, formatMinutes, relativeTime, type RequestWithDetails, type VoteDecision } from '@screentime/shared';
+import {
+  COUNTER_OFFER_OPTIONS,
+  displayName,
+  formatMinutes,
+  relativeTime,
+  type RequestWithDetails,
+  type VoteDecision,
+} from '@screentime/shared';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 import { useTheme } from '../../components/theme';
-import { Body, Button, Card, ErrorText, Field, Loading, Screen, SectionTitle, StatusPill } from '../../components/ui';
+import { Body, Button, Card, Chips, ErrorText, Field, Loading, Screen, SectionTitle, StatusPill } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useRealtime } from '../../hooks/useRealtime';
 import { cancelRequest, castVote, getRequest } from '../../lib/api';
 import { useUserId } from '../../lib/auth';
+import { haptic } from '../../lib/haptics';
 import { friendlyError } from '../../lib/supabase';
 import { ScreenTime } from '../../screentime';
 
@@ -70,6 +78,9 @@ function Votes({ request }: { request: RequestWithDetails }) {
               {v.decision === 'approve' ? '✓ Approved' : '✕ Denied'}
             </Body>{' '}
             by {displayName(v.voter)}
+            {v.decision === 'approve' && v.minutes && v.minutes < request.minutes_requested
+              ? ` (offered ${formatMinutes(v.minutes)})`
+              : ''}
           </Body>
           {v.comment ? <Body muted>“{v.comment}”</Body> : null}
         </Card>
@@ -114,6 +125,9 @@ function RequesterView({ request }: { request: RequestWithDetails }) {
       )}
       {request.status === 'approved' && (
         <Card style={{ borderColor: t.success }}>
+          {request.minutes_granted && request.minutes_granted < request.minutes_requested ? (
+            <Body muted>Your partners offered less than you asked for.</Body>
+          ) : null}
           <Body style={{ fontWeight: '800', color: t.success }}>
             Unlocked for {formatMinutes(request.minutes_granted ?? request.minutes_requested)} 🎉
           </Body>
@@ -132,13 +146,20 @@ function PartnerView({ request, onVoted }: { request: RequestWithDetails; onVote
   const userId = useUserId();
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<VoteDecision | null>(null);
+  const offers = [
+    ...COUNTER_OFFER_OPTIONS.filter((m) => m < request.minutes_requested),
+    request.minutes_requested,
+  ];
+  const [offer, setOffer] = useState<number>(request.minutes_requested);
   const myVote = request.votes.find((v) => v.voter_id === userId);
   const canVote = request.status === 'pending' && !myVote && new Date(request.expires_at) > new Date();
 
   async function vote(decision: VoteDecision) {
     setBusy(decision);
     try {
-      await castVote(request.id, userId, decision, comment.trim());
+      await castVote(request.id, userId, decision, comment.trim(), decision === 'approve' ? offer : undefined);
+      if (decision === 'approve') haptic.success();
+      else haptic.warning();
       onVoted();
     } catch (e) {
       Alert.alert('Could not record your vote', friendlyError(e));
@@ -153,6 +174,17 @@ function PartnerView({ request, onVoted }: { request: RequestWithDetails; onVote
       <Summary request={request} />
       {canVote && (
         <>
+          {offers.length > 1 && (
+            <>
+              <Body muted>Approve how much?</Body>
+              <Chips
+                options={offers}
+                value={offer}
+                onChange={setOffer}
+                format={(m) => (m === request.minutes_requested ? `All ${formatMinutes(m)}` : formatMinutes(m))}
+              />
+            </>
+          )}
           <Field
             label="Message (optional)"
             value={comment}
@@ -171,7 +203,7 @@ function PartnerView({ request, onVoted }: { request: RequestWithDetails; onVote
             />
             <Button
               style={{ flex: 1 }}
-              title="Approve"
+              title={offer < request.minutes_requested ? `Approve ${formatMinutes(offer)}` : 'Approve'}
               variant="success"
               onPress={() => vote('approve')}
               loading={busy === 'approve'}

@@ -1,5 +1,8 @@
 import {
+  badgesFor,
+  describeLimit,
   describePendingChange,
+  formatClock,
   displayName,
   formatStreak,
   summarizeWeek,
@@ -46,6 +49,17 @@ export default async function Dashboard() {
           </div>
           <p className="mt-1 text-4xl font-extrabold text-indigo-600">{formatStreak(stats.streak_days)}</p>
           <p className="mt-1 text-sm text-slate-500">This week: {summarizeWeek(stats)}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {badgesFor(stats).map((b) => (
+              <span
+                key={b.id}
+                title={b.earned ? 'Earned' : 'Not earned yet'}
+                className={`rounded-full border border-slate-200 px-3 py-1 text-xs dark:border-slate-700 ${b.earned ? '' : 'opacity-35'}`}
+              >
+                {b.emoji} {b.label}
+              </span>
+            ))}
+          </div>
           {stats.partner.votes > 0 && (
             <p className="mt-1 text-sm text-slate-500">
               As a partner: {stats.partner.votes} answers in 30 days
@@ -137,10 +151,14 @@ export default async function Dashboard() {
             <Card key={l.id} className={l.active ? '' : 'opacity-50'}>
               <div className="flex justify-between">
                 <span className="font-bold">{l.name}</span>
-                <span className="font-bold text-indigo-600">{formatMinutes(l.minutes)}</span>
+                <span className="font-bold text-indigo-600">
+                  {l.kind === 'downtime' && l.start_minute != null && l.end_minute != null
+                    ? `🌙 ${formatClock(l.start_minute)}–${formatClock(l.end_minute)}`
+                    : formatMinutes(l.minutes)}
+                </span>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                {l.kind === 'daily' ? 'Per day' : 'Per session'} · {STRICTNESS_INFO[l.strictness].label}
+                {describeLimit(l)} · {STRICTNESS_INFO[l.strictness].label}
                 {l.active ? '' : ' · paused'}
               </p>
               {l.pending_effective_at && (
