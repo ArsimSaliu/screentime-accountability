@@ -1,6 +1,9 @@
 import {
   describePendingChange,
   displayName,
+  formatStreak,
+  summarizeWeek,
+  type UserStats,
   formatMinutes,
   relativeTime,
   STRICTNESS_INFO,
@@ -14,7 +17,7 @@ import { useTheme } from '../../components/theme';
 import { Body, Button, Card, ErrorText, Screen, SectionTitle, StatusPill } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useRealtime } from '../../hooks/useRealtime';
-import { countAcceptedPartners, listMyLimits, listMyRequests } from '../../lib/api';
+import { countAcceptedPartners, getStats, listMyLimits, listMyRequests } from '../../lib/api';
 import { useAuth, useUserId } from '../../lib/auth';
 import { ScreenTime, type ScreenTimeStatus } from '../../screentime';
 
@@ -22,12 +25,13 @@ export default function Home() {
   const userId = useUserId();
   const { profile } = useAuth();
   const { data, error, reload } = useAsync(async () => {
-    const [limits, requests, partnerCount] = await Promise.all([
+    const [limits, requests, partnerCount, stats] = await Promise.all([
       listMyLimits(userId),
       listMyRequests(userId, 5),
       countAcceptedPartners(userId),
+      getStats(userId).catch(() => null),
     ]);
-    return { limits, requests, partnerCount };
+    return { limits, requests, partnerCount, stats };
   }, [userId]);
 
   useRealtime('extension_requests', reload, `requester_id=eq.${userId}`);
@@ -46,6 +50,7 @@ export default function Home() {
     <Screen onRefresh={reload}>
       <Body muted>Hi {displayName(profile)} 👋</Body>
       <ErrorText error={error} />
+      {data?.stats && <StatsCard stats={data.stats} />}
 
       <ScreenTimeCard status={stStatus} onConnect={async () => setStStatus(await ScreenTime.requestAuthorization())} />
 
@@ -78,6 +83,20 @@ export default function Home() {
         </>
       )}
     </Screen>
+  );
+}
+
+function StatsCard({ stats }: { stats: UserStats }) {
+  const t = useTheme();
+  return (
+    <Card>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Body muted>Streak without extra time</Body>
+        <Body muted>best {stats.best_streak_days} d</Body>
+      </View>
+      <Body style={{ fontSize: 28, fontWeight: '800', color: t.primary }}>{formatStreak(stats.streak_days)}</Body>
+      <Body muted>This week: {summarizeWeek(stats)}</Body>
+    </Card>
   );
 }
 

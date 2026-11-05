@@ -59,7 +59,24 @@ export type PushData =
   | { kind: 'invite_accepted'; partnershipId: string }
   | { kind: 'limit_loosening'; limitId: string }
   | { kind: 'partner_removal'; partnershipId: string }
-  | { kind: 'tamper'; eventId: string };
+  | { kind: 'tamper'; eventId: string }
+  | { kind: 'weekly_digest' }
+  | { kind: 'account_deleted' };
+
+/** Shape returned by the `user_stats` RPC. */
+export type UserStats = {
+  streak_days: number;
+  best_streak_days: number;
+  week: {
+    requests: number;
+    approved: number;
+    denied: number;
+    expired: number;
+    emergencies: number;
+    minutes_granted: number;
+  };
+  partner: { votes: number; approvals: number; avg_response_minutes: number | null };
+};
 
 /** A queued loosening of a limit (applied by the server 24 h after it was requested). */
 export type PendingLimitChange = {

@@ -113,6 +113,10 @@ function SignedInEffects({ userId }: { userId: string }) {
       router.push('/partners');
     } else if (data.kind === 'limit_loosening' || data.kind === 'tamper') {
       router.push('/inbox');
+    } else if (data.kind === 'account_deleted') {
+      router.push('/partners');
+    } else if (data.kind === 'weekly_digest') {
+      router.push('/');
     }
     Notifications.clearLastNotificationResponse();
   }, [lastResponse, userId]);

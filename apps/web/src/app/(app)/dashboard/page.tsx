@@ -1,6 +1,8 @@
 import {
   describePendingChange,
   displayName,
+  formatStreak,
+  summarizeWeek,
   formatMinutes,
   relativeTime,
   STRICTNESS_INFO,
@@ -13,8 +15,19 @@ import { cancelPendingLimitChangeAction } from '@/lib/actions';
 import { getDashboard } from '@/lib/data';
 
 export default async function Dashboard() {
-  const { now, userId, profile, limits, myRequests, partnerRequests, partnerCount, friendLoosening, friendTamper, friends } =
-    await getDashboard();
+  const {
+    now,
+    userId,
+    profile,
+    limits,
+    myRequests,
+    partnerRequests,
+    partnerCount,
+    friendLoosening,
+    friendTamper,
+    friends,
+    stats,
+  } = await getDashboard();
   const needsVote = partnerRequests.filter(
     (r) => r.status === 'pending' && new Date(r.expires_at).getTime() > now && !r.votes.some((v) => v.voter_id === userId),
   );
@@ -24,6 +37,24 @@ export default async function Dashboard() {
     <main>
       <LiveRefresh tables={['extension_requests', 'request_votes', 'limits', 'tamper_events']} />
       <h1 className="text-3xl font-extrabold">Hi {displayName(profile)}</h1>
+
+      {stats && (
+        <Card className="mt-6">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-slate-500">Streak without extra time</span>
+            <span className="text-sm text-slate-500">best {stats.best_streak_days} d</span>
+          </div>
+          <p className="mt-1 text-4xl font-extrabold text-indigo-600">{formatStreak(stats.streak_days)}</p>
+          <p className="mt-1 text-sm text-slate-500">This week: {summarizeWeek(stats)}</p>
+          {stats.partner.votes > 0 && (
+            <p className="mt-1 text-sm text-slate-500">
+              As a partner: {stats.partner.votes} answers in 30 days
+              {stats.partner.avg_response_minutes !== null &&
+                `, usually within ${Math.max(1, Math.round(stats.partner.avg_response_minutes))} min`}
+            </p>
+          )}
+        </Card>
+      )}
 
       <SectionTitle>Needs your answer</SectionTitle>
       {needsVote.length === 0 ? (
@@ -70,7 +101,10 @@ export default async function Dashboard() {
           <div className="grid gap-3 sm:grid-cols-2">
             {friends.map((f) => (
               <Card key={f.id}>
-                <p className="font-semibold">{displayName(f)}</p>
+                <p className="font-semibold">
+                  {displayName(f)}
+                  {f.streak_days !== null && <span className="font-normal text-slate-500"> · {formatStreak(f.streak_days)}</span>}
+                </p>
                 <p className="text-sm text-slate-500">
                   {f.last_seen_at ? `Last seen ${relativeTime(f.last_seen_at, now)}` : 'Not seen yet'} ·{' '}
                   <span className={f.screen_time_status === 'approved' ? 'text-green-600' : 'text-amber-600'}>

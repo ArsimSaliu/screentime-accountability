@@ -16,6 +16,9 @@ export default function Home() {
           Dashboard
         </Link>
       </div>
+      <Link href="/privacy" className="text-sm text-slate-500 underline">
+        Privacy policy
+      </Link>
     </main>
   );
 }

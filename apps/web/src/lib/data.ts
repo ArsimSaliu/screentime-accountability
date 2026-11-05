@@ -5,6 +5,7 @@ import {
   type PartnershipWithProfiles,
   type Profile,
   type RequestWithDetails,
+  type UserStats,
 } from '@screentime/shared';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
@@ -27,7 +28,7 @@ export const requireUser = cache(async (opts: { allowNotOnboarded?: boolean } = 
 export async function getDashboard() {
   const { supabase, userId, profile } = await requireUser();
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [limits, mine, partnerReqs, partnerCount, loosening, tamper, supported] = await Promise.all([
+  const [limits, mine, partnerReqs, partnerCount, loosening, tamper, supported, myStats] = await Promise.all([
     supabase.from('limits').select('*').eq('user_id', userId).order('created_at'),
     supabase
       .from('extension_requests')
@@ -62,7 +63,14 @@ export async function getDashboard() {
       .select('owner:profiles!partnerships_owner_id_fkey(id, username, display_name, last_seen_at, screen_time_status)')
       .eq('partner_id', userId)
       .eq('status', 'accepted'),
+    supabase.rpc('user_stats', { p_user: userId }),
   ]);
+
+  const friendList = (supported.data ?? []).map((p) => p.owner).filter((f): f is NonNullable<typeof f> => !!f);
+  // Partners may read each other's stats (user_stats checks the partnership).
+  const friendStats = await Promise.all(
+    friendList.map((f) => supabase.rpc('user_stats', { p_user: f.id }).then((r) => r.data as UserStats | null)),
+  );
 
   return {
     now: Date.now(),
@@ -74,9 +82,8 @@ export async function getDashboard() {
     partnerCount: partnerCount.count ?? 0,
     friendLoosening: loosening.data ?? [],
     friendTamper: tamper.data ?? [],
-    friends: (supported.data ?? [])
-      .map((p) => p.owner)
-      .filter((f): f is NonNullable<typeof f> => !!f),
+    friends: friendList.map((f, i) => ({ ...f, streak_days: friendStats[i]?.streak_days ?? null })),
+    stats: (myStats.data as UserStats | null) ?? null,
   };
 }
 

@@ -13,6 +13,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <nav className="flex items-center gap-5 text-sm font-medium">
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/partners">Partners</Link>
+          <Link href="/settings">Settings</Link>
           <Suspense>
             <UserMenu />
           </Suspense>

@@ -4,6 +4,7 @@ import {
   type Limit,
   type LimitForm,
   type ProfileSummary,
+  type UserStats,
   type PartnershipWithProfiles,
   type RequestWithDetails,
   type VoteDecision,
@@ -177,7 +178,11 @@ export type FriendAlert =
   | { type: 'loosening'; at: string; effectiveAt: string; friend: ProfileSummary | null; limitName: string; limit: Limit }
   | { type: 'tamper'; at: string; friend: ProfileSummary | null; kind: string };
 
-export type FriendStatus = ProfileSummary & { last_seen_at: string | null; screen_time_status: string | null };
+export type FriendStatus = ProfileSummary & {
+  last_seen_at: string | null;
+  screen_time_status: string | null;
+  streak_days?: number;
+};
 
 /** Alerts (scheduled loosenings, tamper events) and check-in status for people I hold accountable. */
 export async function listFriendAlerts(userId: string): Promise<{ alerts: FriendAlert[]; friends: FriendStatus[] }> {
@@ -223,5 +228,25 @@ export async function listFriendAlerts(userId: string): Promise<{ alerts: Friend
   const friends = partnerships.data
     .map((p) => p.owner as unknown as FriendStatus | null)
     .filter((f): f is FriendStatus => !!f);
+  // Partners may read each other's stats (user_stats checks the partnership).
+  await Promise.all(
+    friends.map(async (f) => {
+      const stats = await getStats(f.id).catch(() => null);
+      if (stats) f.streak_days = stats.streak_days;
+    }),
+  );
   return { alerts, friends };
+}
+
+// ---------- Stats & account ----------
+export async function getStats(userId: string): Promise<UserStats | null> {
+  const { data, error } = await supabase.rpc('user_stats', { p_user: userId });
+  if (error) throw error;
+  return data as UserStats | null;
+}
+
+/** Permanently delete the signed-in account (server function verifies the JWT). */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+  if (error) throw error;
 }

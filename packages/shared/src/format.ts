@@ -1,4 +1,4 @@
-import type { Limit, PendingLimitChange, ProfileSummary, RequestStatus } from './models';
+import type { Limit, PendingLimitChange, ProfileSummary, RequestStatus, UserStats } from './models';
 
 export function displayName(p: ProfileSummary | null | undefined): string {
   if (!p) return 'Someone';
@@ -41,4 +41,18 @@ export function describePendingChange(limit: Pick<Limit, 'pending_change'>): str
   if (c.active === false) parts.push('pause');
   if (c.kind === 'session') parts.push('switch to per-session');
   return parts.length ? parts.join(', ') : null;
+}
+
+export function formatStreak(days: number): string {
+  return `${days >= 7 ? '🔥 ' : ''}${days} day${days === 1 ? '' : 's'}`;
+}
+
+/** One-line summary of the last 7 days. */
+export function summarizeWeek(stats: UserStats): string {
+  const w = stats.week;
+  if (!w.requests && !w.emergencies) return 'No extra time requested this week';
+  const parts = [`${w.requests} request${w.requests === 1 ? '' : 's'}`, `${w.approved} approved`];
+  if (w.minutes_granted) parts.push(`${formatMinutes(w.minutes_granted)} extra`);
+  if (w.emergencies) parts.push(`${w.emergencies} emergency`);
+  return parts.join(' · ');
 }

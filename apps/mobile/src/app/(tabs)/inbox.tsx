@@ -2,6 +2,7 @@ import {
   describePendingChange,
   displayName,
   formatMinutes,
+  formatStreak,
   relativeTime,
   type RequestWithDetails,
 } from '@screentime/shared';
@@ -116,7 +117,10 @@ function FriendRow({ friend }: { friend: FriendStatus }) {
   const blocking = friend.screen_time_status === 'approved';
   return (
     <Card>
-      <Body style={{ fontWeight: '700' }}>{displayName(friend)}</Body>
+      <Body style={{ fontWeight: '700' }}>
+        {displayName(friend)}
+        {friend.streak_days !== undefined ? ` · ${formatStreak(friend.streak_days)}` : ''}
+      </Body>
       <Body muted>
         {friend.last_seen_at ? `Last seen ${relativeTime(friend.last_seen_at)}` : 'Not seen yet'}
         {' · '}

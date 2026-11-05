@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import type { Database } from '@screentime/shared';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const PROTECTED = ['/dashboard', '/partners', '/requests', '/onboarding'];
+const PROTECTED = ['/dashboard', '/partners', '/requests', '/onboarding', '/settings'];
 
 /** Refreshes the Supabase session cookie on every request and guards private pages. */
 export async function updateSession(request: NextRequest) {
