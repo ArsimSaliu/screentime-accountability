@@ -22,6 +22,7 @@ import { useAsync } from '../../hooks/useAsync';
 import { useRealtime } from '../../hooks/useRealtime';
 import { countAcceptedPartners, getStats, listMyLimits, listMyRequests } from '../../lib/api';
 import { useAuth, useUserId } from '../../lib/auth';
+import { updateWidget, widgetStateFrom } from '../../lib/widget';
 import { ScreenTime, type ScreenTimeStatus } from '../../screentime';
 
 export default function Home() {
@@ -41,6 +42,11 @@ export default function Home() {
 
   const active = data?.requests.find((r) => r.status === 'pending');
   const [stStatus, setStStatus] = useState<ScreenTimeStatus>(() => ScreenTime.getAuthorizationStatus());
+
+  // Keep the home-screen widget current.
+  useEffect(() => {
+    if (data) updateWidget(widgetStateFrom(data.stats, data.requests, data.limits));
+  }, [data]);
 
   // Keep the device's monitors/shields in sync with the limits stored on the server.
   useEffect(() => {

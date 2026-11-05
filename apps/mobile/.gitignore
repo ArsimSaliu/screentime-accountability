@@ -45,4 +45,8 @@ yarn-error.*
 !.env.example
 
 # copied from react-native-device-activity by its config plugin on every prebuild
-/targets
+/targets/ActivityMonitorExtension
+/targets/ShieldAction
+/targets/ShieldConfiguration
+/targets/*/generated.entitlements
+/targets/*/Assets.xcassets

@@ -1,0 +1,71 @@
+# Compiles the iOS app, its Screen Time extensions and the widget with real Xcode on a
+# GitHub-hosted Mac. No Apple account or signing needed: it's an unsigned simulator build.
+# Lets you check native/Swift changes from Windows before spending an EAS build.
+name: iOS build (Xcode)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+      - 'package-lock.json'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/shared/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Generate native project (expo prebuild)
+        working-directory: apps/mobile
+        env:
+          EXPO_NO_TELEMETRY: '1'
+          EXPO_PUBLIC_WEB_URL: https://example.com
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Build app + extensions + widget (unsigned, simulator)
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace Leash.xcworkspace \
+            -scheme Leash \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee xcodebuild.log | xcbeautify --renderer github-actions
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: apps/mobile/ios/xcodebuild.log
+          retention-days: 7

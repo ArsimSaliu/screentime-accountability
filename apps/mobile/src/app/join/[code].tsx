@@ -1,4 +1,5 @@
 import { displayName, type InviteLinkInfo } from '@screentime/shared';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Body, Button, Card, Loading, Screen } from '../../components/ui';
@@ -14,6 +15,7 @@ export default function JoinScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    void AsyncStorage.removeItem('pending_invite_code');
     getInviteLinkInfo(code).then(setInfo, (e) => setError(friendlyError(e)));
   }, [code]);
 

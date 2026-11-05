@@ -3,6 +3,8 @@ import {
   NOTIFICATION_ACTION_DENY,
   type PushData,
 } from '@screentime/shared';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -26,8 +28,19 @@ export default function RootLayout() {
   );
 }
 
+const PENDING_INVITE_KEY = 'pending_invite_code';
+const JOIN_RE = /\/join\/([A-Za-z0-9_-]{6,64})/;
+
 function RootNavigator() {
   const { session, profile, loading } = useAuth();
+
+  // An invite link opened while signed out can't reach the join screen yet (it's behind the
+  // sign-in guard), so remember the code and open it after sign-in / onboarding.
+  const url = Linking.useLinkingURL();
+  useEffect(() => {
+    const code = url ? JOIN_RE.exec(url)?.[1] : undefined;
+    if (code) void AsyncStorage.setItem(PENDING_INVITE_KEY, code);
+  }, [url]);
   const t = useTheme();
   const signedIn = !!session;
   const ready = signedIn && !!profile?.onboarded;
@@ -73,6 +86,15 @@ function SignedInEffects({ userId }: { userId: string }) {
 
   useEffect(() => {
     void registerForPushNotifications();
+  }, [userId]);
+
+  // Resume an invite link that was opened before signing in.
+  useEffect(() => {
+    void AsyncStorage.getItem(PENDING_INVITE_KEY).then((code) => {
+      if (!code) return;
+      void AsyncStorage.removeItem(PENDING_INVITE_KEY);
+      router.push({ pathname: '/join/[code]', params: { code } });
+    });
   }, [userId]);
 
   // Heartbeat + tamper detection whenever the app comes to the foreground.
