@@ -1,12 +1,12 @@
-import { displayName } from '@screentime/shared';
+import { displayName, relativeTime } from '@screentime/shared';
 import { LiveRefresh } from '@/components/live-refresh';
 import { Button, Card, SectionTitle } from '@/components/ui';
-import { acceptInviteAction, removePartnershipAction } from '@/lib/actions';
+import { acceptInviteAction, cancelPartnerRemovalAction, removePartnershipAction } from '@/lib/actions';
 import { getPartnerships } from '@/lib/data';
 import { InviteForm } from './invite-form';
 
 export default async function PartnersPage() {
-  const { userId, partnerships } = await getPartnerships();
+  const { userId, partnerships, now } = await getPartnerships();
   const mine = partnerships.filter((p) => p.owner_id === userId);
   const incoming = partnerships.filter((p) => p.partner_id === userId && p.status === 'pending');
   const supporting = partnerships.filter((p) => p.partner_id === userId && p.status === 'accepted');
@@ -42,18 +42,33 @@ export default async function PartnersPage() {
       )}
 
       <SectionTitle>Your accountability partners</SectionTitle>
-      <p className="mb-3 text-slate-500">These people approve or deny your requests for more time.</p>
+      <p className="mb-3 text-slate-500">
+        These people approve or deny your requests for more time. Removing one takes 24 hours.
+      </p>
       <div className="grid gap-3">
         {mine.map((p) => (
           <Card key={p.id} className="flex items-center justify-between">
             <div>
               <p className="font-bold">{displayName(p.partner)}</p>
-              <p className="text-sm text-slate-500">{p.status === 'pending' ? 'Invite pending' : `@${p.partner?.username}`}</p>
+              <p className="text-sm text-slate-500">
+                {p.status === 'pending'
+                  ? 'Invite pending'
+                  : p.removal_effective_at
+                    ? `Removing ${relativeTime(p.removal_effective_at, now)}`
+                    : `@${p.partner?.username}`}
+              </p>
             </div>
-            <form action={removePartnershipAction}>
-              <input type="hidden" name="id" value={p.id} />
-              <Button variant="secondary">Remove</Button>
-            </form>
+            {p.removal_effective_at ? (
+              <form action={cancelPartnerRemovalAction}>
+                <input type="hidden" name="id" value={p.id} />
+                <Button variant="secondary">Keep</Button>
+              </form>
+            ) : (
+              <form action={removePartnershipAction}>
+                <input type="hidden" name="id" value={p.id} />
+                <Button variant="secondary">Remove</Button>
+              </form>
+            )}
           </Card>
         ))}
       </div>

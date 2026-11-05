@@ -21,7 +21,7 @@ supabase/
 | 1 | Monorepo, Supabase schema + auth, mobile + web sign-in | ✅ done |
 | 2 | Partners, requests, push notifications, approve/deny on app, web and email link, realtime | ✅ done |
 | 3 | Real Screen Time blocking (FamilyControls / DeviceActivity / ManagedSettings) | ✅ code done, needs Apple entitlement to run on a device |
-| 4 | Hardening: tamper alerts, "loosening takes 24 h", break-glass override | planned |
+| 4 | Hardening: loosening takes 24 h, partner-removal cooldown, emergency unlock, tamper alerts | ✅ done |
 | 5 | Analytics, streaks, widgets, TestFlight / App Store | planned |
 
 Without Screen Time access (Expo Go, simulator, or before Apple approves the entitlement), the app's
@@ -242,11 +242,27 @@ generates the three iOS extensions (ActivityMonitor, ShieldConfiguration, Shield
 - **Sync:** Home calls `syncLimits()` so the phone matches the server. A monitor only restarts when that
   limit's minutes or apps change, so an active extension isn't wiped.
 
-Known limits:
-- **Per-session limits are saved but don't block yet.** iOS has no notion of an "app session".
-- **The app doesn't stop you from weakening your own limits yet:** you can still delete or pause
-  a limit, or revoke Screen Time access. Phase 4 adds "loosening takes effect after 24 h" and tamper
-  alerts to your partners.
+Known limit: **per-session limits are saved but don't block yet.** iOS has no notion of an "app session".
+
+## Anti-cheat rules (Phase 4)
+
+These rules are enforced in Postgres (`supabase/migrations/*_hardening.sql`), so neither app can skip them:
+
+| You try to… | What happens |
+|---|---|
+| Tighten a limit (fewer minutes, stricter, more approvals, unpause) | Applies immediately |
+| Loosen a limit (more minutes, less strict, fewer approvals, pause, daily→session) | Queued for **24 h**, partners alerted, cancellable. The current rule keeps blocking meanwhile |
+| Delete an active limit | Scheduled for deletion in **24 h** (the limit keeps blocking) |
+| Change a **Relaxed** limit | Applies immediately (that's what Relaxed means) |
+| Remove an accepted partner | Takes **24 h**, and they can still vote meanwhile. Withdrawing an invite or a partner leaving is immediate |
+| **Emergency unlock** | Up to 15 min with a reason, no approval, **once per 24 h**, and every partner is alerted |
+| Revoke Leash's Screen Time access | Reported the next time the app opens, and partners get a ⚠️ alert |
+
+The app also sends a heartbeat each time it opens, so partners see when you were last seen and whether
+blocking is on (mobile Inbox, web dashboard). Queued changes are applied by a `pg_cron` job every 5 minutes.
+
+What it still **can't** stop: deleting the app or turning off Screen Time for all apps in iOS Settings.
+Keep the passcode trick below for that.
 
 **Tip:** keep your brother's iOS Screen Time passcode protecting *Screen Time settings* and
 *Deleting Apps*. That stops you from simply revoking the app's access, while Leash handles

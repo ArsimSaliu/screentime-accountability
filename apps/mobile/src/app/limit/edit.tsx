@@ -1,11 +1,19 @@
-import { limitFormSchema, STRICTNESS_INFO, type LimitForm, type Strictness } from '@screentime/shared';
+import {
+  describePendingChange,
+  limitFormSchema,
+  relativeTime,
+  STRICTNESS_INFO,
+  type Limit,
+  type LimitForm,
+  type Strictness,
+} from '@screentime/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Switch, View } from 'react-native';
 import { AppPicker } from '../../components/AppPicker';
 import { useTheme } from '../../components/theme';
-import { Body, Button, Chips, Field, Loading, Screen, SectionTitle } from '../../components/ui';
-import { deleteLimit, getLimit, listMyLimits, saveLimit } from '../../lib/api';
+import { Body, Button, Card, Chips, Field, Loading, Screen, SectionTitle } from '../../components/ui';
+import { cancelPendingLimitChange, deleteLimit, getLimit, listMyLimits, saveLimit } from '../../lib/api';
 import { useUserId } from '../../lib/auth';
 import { friendlyError } from '../../lib/supabase';
 import { ScreenTime } from '../../screentime';
@@ -21,6 +29,7 @@ export default function EditLimit() {
   const t = useTheme();
   const [form, setForm] = useState<LimitForm>(EMPTY);
   const [active, setActive] = useState(true);
+  const [current, setCurrent] = useState<Limit | null>(null);
   const [selection, setSelection] = useState<string | null>(() => (id ? ScreenTime.getSelection(id) : null));
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
@@ -30,6 +39,7 @@ export default function EditLimit() {
     if (!id) return;
     getLimit(id)
       .then((l) => {
+        setCurrent(l);
         if (l) {
           setForm({
             name: l.name,
@@ -56,6 +66,15 @@ export default function EditLimit() {
       const limitId = await saveLimit(userId, id ? { ...parsed.data, active } : parsed.data, id);
       if (selection) ScreenTime.saveSelection(limitId, selection);
       await ScreenTime.syncLimits(await listMyLimits(userId));
+
+      const saved = await getLimit(limitId);
+      const queued = saved && saved.pending_effective_at && saved.pending_effective_at !== current?.pending_effective_at;
+      if (queued) {
+        Alert.alert(
+          'Change scheduled',
+          `Loosening a limit takes 24 hours, and your partners have been told. Pending: ${describePendingChange(saved)}.`,
+        );
+      }
       router.back();
     } catch (e) {
       setError(friendlyError(e));
@@ -65,24 +84,56 @@ export default function EditLimit() {
 
   function remove() {
     if (!id) return;
-    Alert.alert('Delete this limit?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () =>
-          deleteLimit(id)
-            .then(() => listMyLimits(userId))
-            .then((limits) => ScreenTime.syncLimits(limits))
-            .then(() => router.back(), (e) => setError(friendlyError(e))),
-      },
-    ]);
+    const relaxed = current?.strictness === 'relaxed' || current?.active === false;
+    Alert.alert(
+      'Delete this limit?',
+      relaxed ? undefined : 'It will be removed in 24 hours. Your partners will be told, and you can cancel before then.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await deleteLimit(id);
+              await ScreenTime.syncLimits(await listMyLimits(userId));
+              if (result === 'scheduled') Alert.alert('Deletion scheduled', 'This limit stays active for 24 more hours.');
+              router.back();
+            } catch (e) {
+              setError(friendlyError(e));
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  async function cancelPending() {
+    if (!id) return;
+    try {
+      await cancelPendingLimitChange(id);
+      setCurrent(await getLimit(id));
+    } catch (e) {
+      setError(friendlyError(e));
+    }
   }
 
   if (loading) return <Loading />;
 
   return (
     <Screen>
+      {current?.pending_change && current.pending_effective_at ? (
+        <Card>
+          <Body style={{ fontWeight: '700' }}>Scheduled change</Body>
+          <Body muted>
+            {describePendingChange(current)} · takes effect {relativeTime(current.pending_effective_at)}
+          </Body>
+          <Button title="Cancel scheduled change" variant="secondary" onPress={cancelPending} />
+        </Card>
+      ) : null}
+      {current && current.strictness !== 'relaxed' && (
+        <Body muted>Tightening applies now. Loosening, pausing or deleting takes 24 hours.</Body>
+      )}
       <Field
         label="Name"
         value={form.name}

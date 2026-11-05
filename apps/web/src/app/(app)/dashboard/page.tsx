@@ -1,4 +1,5 @@
 import {
+  describePendingChange,
   displayName,
   formatMinutes,
   relativeTime,
@@ -7,11 +8,13 @@ import {
 } from '@screentime/shared';
 import Link from 'next/link';
 import { LiveRefresh } from '@/components/live-refresh';
-import { Card, SectionTitle, StatusPill } from '@/components/ui';
+import { Button, Card, SectionTitle, StatusPill } from '@/components/ui';
+import { cancelPendingLimitChangeAction } from '@/lib/actions';
 import { getDashboard } from '@/lib/data';
 
 export default async function Dashboard() {
-  const { now, userId, profile, limits, myRequests, partnerRequests, partnerCount } = await getDashboard();
+  const { now, userId, profile, limits, myRequests, partnerRequests, partnerCount, friendLoosening, friendTamper, friends } =
+    await getDashboard();
   const needsVote = partnerRequests.filter(
     (r) => r.status === 'pending' && new Date(r.expires_at).getTime() > now && !r.votes.some((v) => v.voter_id === userId),
   );
@@ -19,7 +22,7 @@ export default async function Dashboard() {
 
   return (
     <main>
-      <LiveRefresh tables={['extension_requests', 'request_votes']} />
+      <LiveRefresh tables={['extension_requests', 'request_votes', 'limits', 'tamper_events']} />
       <h1 className="text-3xl font-extrabold">Hi {displayName(profile)}</h1>
 
       <SectionTitle>Needs your answer</SectionTitle>
@@ -31,6 +34,57 @@ export default async function Dashboard() {
             <RequestLink key={r.id} request={r} now={now} showRequester highlight />
           ))}
         </div>
+      )}
+
+      {(friendLoosening.length > 0 || friendTamper.length > 0) && (
+        <>
+          <SectionTitle>Alerts</SectionTitle>
+          <div className="grid gap-3">
+            {friendTamper.map((e) => (
+              <Card key={e.id} className={e.kind === 'screen_time_revoked' ? 'border-red-400 dark:border-red-500' : ''}>
+                <p className="font-semibold">
+                  {e.kind === 'screen_time_revoked' ? '⚠️ ' : '✓ '}
+                  {displayName(e.owner)}{' '}
+                  {e.kind === 'screen_time_revoked' ? 'turned off app blocking' : 'turned app blocking back on'}
+                </p>
+                <p className="text-sm text-slate-500">{relativeTime(e.created_at, now)}</p>
+              </Card>
+            ))}
+            {friendLoosening.map((l) => (
+              <Card key={l.id} className="border-amber-400 dark:border-amber-500">
+                <p className="font-semibold">
+                  {displayName(l.owner)} is loosening “{l.name}”
+                </p>
+                <p className="text-sm text-slate-500">
+                  {describePendingChange(l)} · takes effect {relativeTime(l.pending_effective_at!, now)}
+                </p>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      {friends.length > 0 && (
+        <>
+          <SectionTitle>People you support</SectionTitle>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {friends.map((f) => (
+              <Card key={f.id}>
+                <p className="font-semibold">{displayName(f)}</p>
+                <p className="text-sm text-slate-500">
+                  {f.last_seen_at ? `Last seen ${relativeTime(f.last_seen_at, now)}` : 'Not seen yet'} ·{' '}
+                  <span className={f.screen_time_status === 'approved' ? 'text-green-600' : 'text-amber-600'}>
+                    {f.screen_time_status === 'approved'
+                      ? 'blocking on'
+                      : f.screen_time_status
+                        ? 'blocking off'
+                        : 'blocking not set up'}
+                  </span>
+                </p>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       {activeMine && (
@@ -55,6 +109,19 @@ export default async function Dashboard() {
                 {l.kind === 'daily' ? 'Per day' : 'Per session'} · {STRICTNESS_INFO[l.strictness].label}
                 {l.active ? '' : ' · paused'}
               </p>
+              {l.pending_effective_at && (
+                <div className="mt-2 flex items-center justify-between gap-2 text-sm text-amber-600">
+                  <span>
+                    Scheduled: {describePendingChange(l)} ({relativeTime(l.pending_effective_at, now)})
+                  </span>
+                  <form action={cancelPendingLimitChangeAction}>
+                    <input type="hidden" name="id" value={l.id} />
+                    <Button variant="secondary" className="h-8 px-3 text-xs">
+                      Cancel
+                    </Button>
+                  </form>
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -108,6 +175,7 @@ function RequestLink({
       <Card className={`transition hover:border-indigo-400 ${highlight ? 'border-amber-400 dark:border-amber-500' : ''}`}>
         <div className="flex items-center justify-between gap-3">
           <span className="font-semibold">
+            {request.emergency ? '🚨 ' : ''}
             {showRequester ? `${displayName(request.requester)} · ` : ''}
             {formatMinutes(request.minutes_requested)}
             {request.limit ? ` for ${request.limit.name}` : ''}

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
-type Table = 'extension_requests' | 'request_votes' | 'partnerships';
+type Table = 'extension_requests' | 'request_votes' | 'partnerships' | 'limits' | 'tamper_events';
 
 /** Re-renders the current server page whenever one of the tables changes (RLS applies). */
 export function LiveRefresh({ tables, filter }: { tables: Table[]; filter?: Partial<Record<Table, string>> }) {

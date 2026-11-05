@@ -1,4 +1,5 @@
 import {
+  describePendingChange,
   displayName,
   formatMinutes,
   relativeTime,
@@ -120,6 +121,11 @@ function LimitRow({ limit }: { limit: Limit }) {
           {limit.active ? '' : ' · paused'}
         </Body>
         {ScreenTime.isAvailable && <Body muted>{ScreenTime.describeSelection(ScreenTime.getSelection(limit.id))}</Body>}
+        {limit.pending_effective_at && (
+          <Body style={{ color: t.warning }}>
+            Scheduled: {describePendingChange(limit)} ({relativeTime(limit.pending_effective_at)})
+          </Body>
+        )}
       </Card>
     </Pressable>
   );

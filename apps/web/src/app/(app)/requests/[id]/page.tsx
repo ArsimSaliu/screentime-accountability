@@ -29,6 +29,7 @@ export default async function RequestPage({ params }: PageProps<'/requests/[id]'
 
       <Card>
         <StatusPill status={request.status} />
+        {request.emergency && <p className="mt-2 font-semibold text-red-600">🚨 Emergency unlock (no approval needed)</p>}
         <p className="mt-3 text-4xl font-extrabold">{formatMinutes(request.minutes_requested)}</p>
         {request.limit && <p className="text-slate-500">Limit: {request.limit.name}</p>}
         <p className="mt-3 text-lg">{request.reason ? `“${request.reason}”` : <span className="text-slate-500">No reason given</span>}</p>

@@ -65,6 +65,18 @@ export async function removePartnershipAction(formData: FormData) {
   revalidatePath('/partners');
 }
 
+export async function cancelPartnerRemovalAction(formData: FormData) {
+  const { supabase } = await requireUser();
+  await supabase.rpc('cancel_partner_removal', { p_partnership: String(formData.get('id')) });
+  revalidatePath('/partners');
+}
+
+export async function cancelPendingLimitChangeAction(formData: FormData) {
+  const { supabase } = await requireUser();
+  await supabase.from('limits').update({ pending_change: null }).eq('id', String(formData.get('id')));
+  revalidatePath('/dashboard');
+}
+
 export async function onboardingAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const { supabase, userId } = await requireUser({ allowNotOnboarded: true });
   const parsed = usernameSchema.safeParse(formData.get('username'));

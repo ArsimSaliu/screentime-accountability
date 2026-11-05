@@ -1,4 +1,4 @@
-import type { ProfileSummary, RequestStatus } from './models';
+import type { Limit, PendingLimitChange, ProfileSummary, RequestStatus } from './models';
 
 export function displayName(p: ProfileSummary | null | undefined): string {
   if (!p) return 'Someone';
@@ -27,4 +27,18 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   const abs = Math.abs(diffMin);
   const unit = abs < 60 ? `${abs} min` : abs < 1440 ? `${Math.round(abs / 60)} h` : `${Math.round(abs / 1440)} d`;
   return diffMin < 0 ? `${unit} ago` : `in ${unit}`;
+}
+
+/** "raise to 90 min, pause" style summary of a queued limit change, or null if none. */
+export function describePendingChange(limit: Pick<Limit, 'pending_change'>): string | null {
+  const c = limit.pending_change as PendingLimitChange | null;
+  if (!c) return null;
+  if (c.delete) return 'delete this limit';
+  const parts: string[] = [];
+  if (c.minutes !== undefined) parts.push(`raise to ${formatMinutes(c.minutes)}`);
+  if (c.strictness !== undefined) parts.push(`strictness → ${c.strictness}`);
+  if (c.approvals_required !== undefined) parts.push(`approvals → ${c.approvals_required}`);
+  if (c.active === false) parts.push('pause');
+  if (c.kind === 'session') parts.push('switch to per-session');
+  return parts.length ? parts.join(', ') : null;
 }

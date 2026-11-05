@@ -7,7 +7,7 @@ import { randomToken, sha256Hex } from '../_shared/tokens.ts';
 
 type Payload = {
   type: 'INSERT' | 'UPDATE';
-  table: 'extension_requests' | 'partnerships';
+  table: 'extension_requests' | 'partnerships' | 'limits' | 'tamper_events';
   record: Record<string, any>;
   old_record: Record<string, any> | null;
 };
@@ -22,14 +22,24 @@ Deno.serve(async (req) => {
 
   const payload = (await req.json()) as Payload;
   try {
-    if (payload.table === 'extension_requests' && payload.type === 'INSERT') {
+    if (payload.table === 'extension_requests' && payload.type === 'INSERT' && payload.record.emergency) {
+      await onEmergencyUnlock(payload.record);
+    } else if (payload.table === 'extension_requests' && payload.type === 'INSERT') {
       await onRequestCreated(payload.record);
     } else if (payload.table === 'extension_requests' && payload.type === 'UPDATE') {
       await onRequestResolved(payload.record);
     } else if (payload.table === 'partnerships' && payload.type === 'INSERT') {
       await onInviteCreated(payload.record);
     } else if (payload.table === 'partnerships' && payload.type === 'UPDATE') {
-      await onInviteAccepted(payload.record);
+      if (payload.record.removal_effective_at && !payload.old_record?.removal_effective_at) {
+        await onPartnerRemovalScheduled(payload.record);
+      } else if (payload.record.status === 'accepted' && payload.old_record?.status === 'pending') {
+        await onInviteAccepted(payload.record);
+      }
+    } else if (payload.table === 'limits' && payload.type === 'UPDATE') {
+      await onLimitLooseningScheduled(payload.record);
+    } else if (payload.table === 'tamper_events' && payload.type === 'INSERT') {
+      await onTamperEvent(payload.record);
     }
   } catch (err) {
     console.error('notify failed', payload.table, payload.type, err);
@@ -37,6 +47,102 @@ Deno.serve(async (req) => {
   }
   return new Response('ok');
 });
+
+async function acceptedPartnerIds(ownerId: string): Promise<string[]> {
+  const { data, error } = await admin
+    .from('partnerships')
+    .select('partner_id')
+    .eq('owner_id', ownerId)
+    .eq('status', 'accepted');
+  if (error) throw error;
+  return (data ?? []).map((p) => p.partner_id as string);
+}
+
+/** Push to partners, falling back to email for those without the app. */
+async function alertPartners(ownerId: string, title: string, body: string, data: Record<string, unknown>) {
+  const partnerIds = await acceptedPartnerIds(ownerId);
+  if (!partnerIds.length) return;
+  const reached = await pushToUsers(partnerIds, { title, body, data });
+  if (!WEB_URL) return;
+  await Promise.all(
+    partnerIds
+      .filter((id) => !reached.has(id))
+      .map(async (id) => {
+        const email = await getEmail(id);
+        if (email) {
+          await sendEmail(
+            email,
+            title,
+            `<p>${escapeHtml(body)}</p><p><a href="${WEB_URL}/dashboard">Open your dashboard</a></p>`,
+          );
+        }
+      }),
+  );
+}
+
+function formatWhen(iso: string): string {
+  const hours = Math.max(1, Math.round((new Date(iso).getTime() - Date.now()) / 3_600_000));
+  return `in about ${hours} h`;
+}
+
+function describePending(change: Record<string, unknown>): string {
+  if (change.delete) return 'delete it';
+  const parts: string[] = [];
+  if (change.minutes !== undefined) parts.push(`raise it to ${change.minutes} min`);
+  if (change.strictness !== undefined) parts.push(`make it ${change.strictness}`);
+  if (change.approvals_required !== undefined) parts.push(`need only ${change.approvals_required} approval(s)`);
+  if (change.active === false) parts.push('pause it');
+  if (change.kind === 'session') parts.push('switch it to per-session');
+  return parts.join(', ') || 'loosen it';
+}
+
+async function onEmergencyUnlock(request: Record<string, any>) {
+  const name = displayName(await getProfile(request.requester_id));
+  await alertPartners(
+    request.requester_id,
+    `🚨 ${name} used an emergency unlock`,
+    `${request.minutes_granted} min without approval. Reason: “${request.reason ?? 'none'}”`,
+    { kind: 'request_created', requestId: request.id },
+  );
+}
+
+async function onLimitLooseningScheduled(limit: Record<string, any>) {
+  if (!limit.pending_change || !limit.pending_effective_at) return;
+  const name = displayName(await getProfile(limit.user_id));
+  await alertPartners(
+    limit.user_id,
+    `${name} is loosening a limit`,
+    `They want to ${describePending(limit.pending_change)} for “${limit.name}”. It takes effect ${formatWhen(limit.pending_effective_at)}.`,
+    { kind: 'limit_loosening', limitId: limit.id },
+  );
+}
+
+async function onPartnerRemovalScheduled(partnership: Record<string, any>) {
+  const name = displayName(await getProfile(partnership.owner_id));
+  await alertPartners(
+    partnership.owner_id,
+    `${name} is removing a partner`,
+    `One of ${name}'s accountability partners will be removed ${formatWhen(partnership.removal_effective_at)}.`,
+    { kind: 'partner_removal', partnershipId: partnership.id },
+  );
+}
+
+async function onTamperEvent(event: Record<string, any>) {
+  const name = displayName(await getProfile(event.user_id));
+  if (event.kind === 'screen_time_revoked') {
+    await alertPartners(
+      event.user_id,
+      `⚠️ ${name} turned off app blocking`,
+      `${name} removed Leash's Screen Time access, so their limits aren't being enforced right now.`,
+      { kind: 'tamper', eventId: event.id },
+    );
+  } else if (event.kind === 'screen_time_restored') {
+    await alertPartners(event.user_id, `${name} turned app blocking back on`, 'Their limits are enforced again.', {
+      kind: 'tamper',
+      eventId: event.id,
+    });
+  }
+}
 
 async function onRequestCreated(request: Record<string, any>) {
   const requester = await getProfile(request.requester_id);

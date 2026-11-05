@@ -7,14 +7,14 @@ import * as Notifications from 'expo-notifications';
 import { router, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { useTheme } from '../components/theme';
 import { Loading } from '../components/ui';
-import { castVote } from '../lib/api';
+import { castVote, reportScreenTimeStatus } from '../lib/api';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { configureNotifications, registerForPushNotifications } from '../lib/notifications';
 import { friendlyError } from '../lib/supabase';
-import { SHIELD_REQUEST_CATEGORY } from '../screentime';
+import { ScreenTime, SHIELD_REQUEST_CATEGORY } from '../screentime';
 
 configureNotifications();
 
@@ -74,6 +74,14 @@ function SignedInEffects({ userId }: { userId: string }) {
     void registerForPushNotifications();
   }, [userId]);
 
+  // Heartbeat + tamper detection whenever the app comes to the foreground.
+  useEffect(() => {
+    const report = () => void reportScreenTimeStatus(ScreenTime.getAuthorizationStatus());
+    report();
+    const sub = AppState.addEventListener('change', (state) => state === 'active' && report());
+    return () => sub.remove();
+  }, [userId]);
+
   useEffect(() => {
     if (!lastResponse) return;
     const key = `${lastResponse.notification.request.identifier}:${lastResponse.actionIdentifier}`;
@@ -101,8 +109,10 @@ function SignedInEffects({ userId }: { userId: string }) {
       } else {
         router.push({ pathname: '/request/[id]', params: { id: requestId } });
       }
-    } else if (data.kind === 'invite_received' || data.kind === 'invite_accepted') {
+    } else if (data.kind === 'invite_received' || data.kind === 'invite_accepted' || data.kind === 'partner_removal') {
       router.push('/partners');
+    } else if (data.kind === 'limit_loosening' || data.kind === 'tamper') {
+      router.push('/inbox');
     }
     Notifications.clearLastNotificationResponse();
   }, [lastResponse, userId]);

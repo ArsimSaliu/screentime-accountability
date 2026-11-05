@@ -42,6 +42,7 @@ function Summary({ request }: { request: RequestWithDetails }) {
   return (
     <Card>
       <StatusPill status={request.status} />
+      {request.emergency && <Body style={{ fontWeight: '700' }}>🚨 Emergency unlock (no approval needed)</Body>}
       <Body style={{ fontSize: 22, fontWeight: '800' }}>{formatMinutes(request.minutes_requested)}</Body>
       {request.limit && <Body muted>Limit: {request.limit.name}</Body>}
       {request.reason ? <Body>“{request.reason}”</Body> : <Body muted>No reason given</Body>}

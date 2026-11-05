@@ -1,10 +1,10 @@
-import { displayName, type PartnershipWithProfiles } from '@screentime/shared';
+import { displayName, relativeTime, type PartnershipWithProfiles } from '@screentime/shared';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 import { Body, Button, Card, ErrorText, Field, Screen, SectionTitle } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { useRealtime } from '../../hooks/useRealtime';
-import { acceptInvite, invitePartner, listPartnerships, removePartnership } from '../../lib/api';
+import { acceptInvite, cancelPartnerRemoval, invitePartner, listPartnerships, removePartnership } from '../../lib/api';
 import { useUserId } from '../../lib/auth';
 import { friendlyError } from '../../lib/supabase';
 
@@ -37,14 +37,21 @@ export default function Partners() {
   }
 
   function confirmRemove(p: PartnershipWithProfiles, other: string) {
-    Alert.alert('Remove partner?', `${other} will no longer be connected to you.`, [
+    const delayed = p.owner_id === userId && p.status === 'accepted';
+    Alert.alert(
+      'Remove partner?',
+      delayed
+        ? `${other} stays your partner for 24 more hours and will be told. You can cancel before then.`
+        : `${other} will no longer be connected to you.`,
+      [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: () => removePartnership(p.id).then(reload, (e) => Alert.alert('Error', friendlyError(e))),
       },
-    ]);
+    ],
+    );
   }
 
   return (
@@ -86,9 +93,23 @@ export default function Partners() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
               <Body style={{ fontWeight: '700' }}>{displayName(p.partner)}</Body>
-              <Body muted>{p.status === 'pending' ? 'Invite pending' : `@${p.partner?.username}`}</Body>
+              <Body muted>
+                {p.status === 'pending'
+                  ? 'Invite pending'
+                  : p.removal_effective_at
+                    ? `Removing ${relativeTime(p.removal_effective_at)}`
+                    : `@${p.partner?.username}`}
+              </Body>
             </View>
-            <Button title="Remove" variant="secondary" onPress={() => confirmRemove(p, displayName(p.partner))} />
+            {p.removal_effective_at ? (
+              <Button
+                title="Keep"
+                variant="secondary"
+                onPress={() => cancelPartnerRemoval(p.id).then(reload, (e) => Alert.alert('Error', friendlyError(e)))}
+              />
+            ) : (
+              <Button title="Remove" variant="secondary" onPress={() => confirmRemove(p, displayName(p.partner))} />
+            )}
           </View>
         </Card>
       ))}

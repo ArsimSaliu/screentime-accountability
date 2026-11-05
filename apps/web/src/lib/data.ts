@@ -26,7 +26,8 @@ export const requireUser = cache(async (opts: { allowNotOnboarded?: boolean } = 
 
 export async function getDashboard() {
   const { supabase, userId, profile } = await requireUser();
-  const [limits, mine, partnerReqs, partnerCount] = await Promise.all([
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const [limits, mine, partnerReqs, partnerCount, loosening, tamper, supported] = await Promise.all([
     supabase.from('limits').select('*').eq('user_id', userId).order('created_at'),
     supabase
       .from('extension_requests')
@@ -45,6 +46,22 @@ export async function getDashboard() {
       .select('id', { count: 'exact', head: true })
       .eq('owner_id', userId)
       .eq('status', 'accepted'),
+    supabase
+      .from('limits')
+      .select('*, owner:profiles!limits_user_id_fkey(id, username, display_name)')
+      .neq('user_id', userId)
+      .not('pending_effective_at', 'is', null),
+    supabase
+      .from('tamper_events')
+      .select('*, owner:profiles!tamper_events_user_id_fkey(id, username, display_name)')
+      .neq('user_id', userId)
+      .gte('created_at', weekAgo)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('partnerships')
+      .select('owner:profiles!partnerships_owner_id_fkey(id, username, display_name, last_seen_at, screen_time_status)')
+      .eq('partner_id', userId)
+      .eq('status', 'accepted'),
   ]);
 
   return {
@@ -55,6 +72,11 @@ export async function getDashboard() {
     myRequests: (mine.data ?? []) as unknown as RequestWithDetails[],
     partnerRequests: (partnerReqs.data ?? []) as unknown as RequestWithDetails[],
     partnerCount: partnerCount.count ?? 0,
+    friendLoosening: loosening.data ?? [],
+    friendTamper: tamper.data ?? [],
+    friends: (supported.data ?? [])
+      .map((p) => p.owner)
+      .filter((f): f is NonNullable<typeof f> => !!f),
   };
 }
 
@@ -67,5 +89,5 @@ export async function getRequestDetails(id: string) {
 export async function getPartnerships() {
   const { supabase, userId } = await requireUser();
   const { data } = await supabase.from('partnerships').select(PARTNERSHIP_SELECT).order('created_at');
-  return { userId, partnerships: (data ?? []) as unknown as PartnershipWithProfiles[] };
+  return { now: Date.now(), userId, partnerships: (data ?? []) as unknown as PartnershipWithProfiles[] };
 }

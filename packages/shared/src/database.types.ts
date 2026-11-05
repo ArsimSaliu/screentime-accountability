@@ -14,6 +14,8 @@ export type Database = {
           timezone: string;
           onboarded: boolean;
           created_at: string;
+          last_seen_at: string | null;
+          screen_time_status: string | null;
         };
         Insert: {
           id: string;
@@ -22,6 +24,8 @@ export type Database = {
           timezone?: string;
           onboarded?: boolean;
           created_at?: string;
+          last_seen_at?: string | null;
+          screen_time_status?: string | null;
         };
         Update: {
           id?: string;
@@ -30,6 +34,8 @@ export type Database = {
           timezone?: string;
           onboarded?: boolean;
           created_at?: string;
+          last_seen_at?: string | null;
+          screen_time_status?: string | null;
         };
         Relationships: [];
       };
@@ -40,6 +46,7 @@ export type Database = {
           partner_id: string;
           status: string;
           created_at: string;
+          removal_effective_at: string | null;
         };
         Insert: {
           id?: string;
@@ -47,6 +54,7 @@ export type Database = {
           partner_id: string;
           status?: string;
           created_at?: string;
+          removal_effective_at?: string | null;
         };
         Update: {
           id?: string;
@@ -54,6 +62,7 @@ export type Database = {
           partner_id?: string;
           status?: string;
           created_at?: string;
+          removal_effective_at?: string | null;
         };
         Relationships: [
           {
@@ -83,6 +92,8 @@ export type Database = {
           approvals_required: number;
           active: boolean;
           created_at: string;
+          pending_change: Json | null;
+          pending_effective_at: string | null;
         };
         Insert: {
           id?: string;
@@ -94,6 +105,8 @@ export type Database = {
           approvals_required?: number;
           active?: boolean;
           created_at?: string;
+          pending_change?: Json | null;
+          pending_effective_at?: string | null;
         };
         Update: {
           id?: string;
@@ -105,6 +118,8 @@ export type Database = {
           approvals_required?: number;
           active?: boolean;
           created_at?: string;
+          pending_change?: Json | null;
+          pending_effective_at?: string | null;
         };
         Relationships: [
           {
@@ -129,6 +144,7 @@ export type Database = {
           expires_at: string;
           decided_at: string | null;
           created_at: string;
+          emergency: boolean;
         };
         Insert: {
           id?: string;
@@ -142,6 +158,7 @@ export type Database = {
           expires_at?: string;
           decided_at?: string | null;
           created_at?: string;
+          emergency?: boolean;
         };
         Update: {
           id?: string;
@@ -155,6 +172,7 @@ export type Database = {
           expires_at?: string;
           decided_at?: string | null;
           created_at?: string;
+          emergency?: boolean;
         };
         Relationships: [
           {
@@ -236,6 +254,20 @@ export type Database = {
         };
         Relationships: [];
       };
+      tamper_events: {
+        Row: { id: string; user_id: string; kind: string; created_at: string };
+        Insert: { id?: string; user_id: string; kind: string; created_at?: string };
+        Update: { id?: string; user_id?: string; kind?: string; created_at?: string };
+        Relationships: [
+          {
+            foreignKeyName: 'tamper_events_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       vote_tokens: {
         Row: {
           token_hash: string;
@@ -267,11 +299,14 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       accept_invite: { Args: { p_partnership: string }; Returns: undefined };
+      cancel_partner_removal: { Args: { p_partnership: string }; Returns: undefined };
       cancel_request: { Args: { p_request: string }; Returns: undefined };
+      emergency_unlock: { Args: { p_minutes: number; p_reason: string; p_limit?: string | null }; Returns: string };
       can_vote: { Args: { p_request: string }; Returns: boolean };
       invite_partner: { Args: { p_username: string }; Returns: string };
       is_accepted_partner: { Args: { p_owner: string; p_partner: string }; Returns: boolean };
       register_push_token: { Args: { p_token: string; p_platform: string }; Returns: undefined };
+      report_screen_time_status: { Args: { p_status: string }; Returns: undefined };
     };
     Enums: {
       limit_kind: 'daily' | 'session';

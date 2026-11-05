@@ -1,9 +1,10 @@
-import { formatMinutes, REQUEST_MINUTE_OPTIONS, requestFormSchema } from '@screentime/shared';
+import { EMERGENCY_MAX_MINUTES, formatMinutes, REQUEST_MINUTE_OPTIONS, requestFormSchema } from '@screentime/shared';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Body, Button, Chips, ErrorText, Field, Screen, SectionTitle } from '../../components/ui';
+import { Alert } from 'react-native';
+import { Body, Button, Card, Chips, ErrorText, Field, Screen, SectionTitle } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
-import { createRequest, listMyLimits } from '../../lib/api';
+import { createRequest, emergencyUnlock, listMyLimits } from '../../lib/api';
 import { useUserId } from '../../lib/auth';
 import { friendlyError } from '../../lib/supabase';
 
@@ -43,6 +44,38 @@ export default function NewRequest() {
     }
   }
 
+  function emergency() {
+    if (reason.trim().length < 3) {
+      return setError('Write a short reason above first. Your partners will see it.');
+    }
+    Alert.alert(
+      `Emergency unlock (${EMERGENCY_MAX_MINUTES} min)?`,
+      'This skips approval. Every partner is alerted immediately, and you can only do it once every 24 hours.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unlock now',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              const id = await emergencyUnlock(
+                EMERGENCY_MAX_MINUTES,
+                reason.trim(),
+                limitId === NO_LIMIT ? null : limitId,
+              );
+              router.replace({ pathname: '/request/[id]', params: { id } });
+            } catch (e) {
+              setError(friendlyError(e));
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   const limitOptions = [NO_LIMIT, ...extendable.map((l) => l.id)];
   const limitLabel = (id: string) => (id === NO_LIMIT ? 'General' : (extendable.find((l) => l.id === id)?.name ?? '?'));
 
@@ -66,6 +99,14 @@ export default function NewRequest() {
 
       {error ? <Body style={{ color: 'red' }}>{error}</Body> : null}
       <Button title={`Ask for ${formatMinutes(minutes)}`} onPress={submit} loading={busy} />
+
+      <SectionTitle>Real emergency?</SectionTitle>
+      <Card>
+        <Body muted>
+          Unlock for {EMERGENCY_MAX_MINUTES} min without waiting. Once per 24 h, and all partners are alerted.
+        </Body>
+        <Button title="Emergency unlock" variant="danger" onPress={emergency} disabled={busy} />
+      </Card>
     </Screen>
   );
 }
