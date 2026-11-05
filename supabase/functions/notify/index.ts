@@ -2,6 +2,7 @@
 // Fans out push notifications and magic-link emails.
 import { admin, displayName, getEmail, getProfile } from '../_shared/admin.ts';
 import { escapeHtml, sendEmail } from '../_shared/email.ts';
+import { alertPartners } from '../_shared/partners.ts';
 import { pushToUsers } from '../_shared/push.ts';
 import { randomToken, sha256Hex } from '../_shared/tokens.ts';
 
@@ -47,38 +48,6 @@ Deno.serve(async (req) => {
   }
   return new Response('ok');
 });
-
-async function acceptedPartnerIds(ownerId: string): Promise<string[]> {
-  const { data, error } = await admin
-    .from('partnerships')
-    .select('partner_id')
-    .eq('owner_id', ownerId)
-    .eq('status', 'accepted');
-  if (error) throw error;
-  return (data ?? []).map((p) => p.partner_id as string);
-}
-
-/** Push to partners, falling back to email for those without the app. */
-async function alertPartners(ownerId: string, title: string, body: string, data: Record<string, unknown>) {
-  const partnerIds = await acceptedPartnerIds(ownerId);
-  if (!partnerIds.length) return;
-  const reached = await pushToUsers(partnerIds, { title, body, data });
-  if (!WEB_URL) return;
-  await Promise.all(
-    partnerIds
-      .filter((id) => !reached.has(id))
-      .map(async (id) => {
-        const email = await getEmail(id);
-        if (email) {
-          await sendEmail(
-            email,
-            title,
-            `<p>${escapeHtml(body)}</p><p><a href="${WEB_URL}/dashboard">Open your dashboard</a></p>`,
-          );
-        }
-      }),
-  );
-}
 
 function formatWhen(iso: string): string {
   const hours = Math.max(1, Math.round((new Date(iso).getTime() - Date.now()) / 3_600_000));

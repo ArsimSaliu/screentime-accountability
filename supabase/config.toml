@@ -428,3 +428,11 @@ verify_jwt = false
 # Called from the public /v/[token] web page; authorised by the single-use token.
 [functions.magic-vote]
 verify_jwt = false
+
+# Called by pg_cron with the shared secret header.
+[functions.weekly-digest]
+verify_jwt = false
+
+# Requires the signed-in user's JWT (the default); the function deletes that user.
+[functions.delete-account]
+verify_jwt = true
