@@ -307,6 +307,8 @@ export type Database = {
       is_accepted_partner: { Args: { p_owner: string; p_partner: string }; Returns: boolean };
       register_push_token: { Args: { p_token: string; p_platform: string }; Returns: undefined };
       report_screen_time_status: { Args: { p_status: string }; Returns: undefined };
+      safe_timezone: { Args: { tz: string }; Returns: string };
+      user_stats: { Args: { p_user: string }; Returns: Json };
     };
     Enums: {
       limit_kind: 'daily' | 'session';
