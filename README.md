@@ -22,7 +22,8 @@ supabase/
 | 2 | Partners, requests, push notifications, approve/deny on app, web and email link, realtime | ✅ done |
 | 3 | Real Screen Time blocking (FamilyControls / DeviceActivity / ManagedSettings) | ✅ code done, needs Apple entitlement to run on a device |
 | 4 | Hardening: loosening takes 24 h, partner-removal cooldown, emergency unlock, tamper alerts | ✅ done |
-| 5 | Analytics, streaks, widgets, TestFlight / App Store | planned |
+| 5 | Streaks & stats, weekly digest, account deletion, privacy policy, TestFlight setup | ✅ done |
+| 6 | Home-screen widget, Live Activity for "waiting for approval", Apple Watch approvals | ideas |
 
 Without Screen Time access (Expo Go, simulator, or before Apple approves the entitlement), the app's
 **"Request more time"** button still works, so you can test the whole approval loop end to end.
@@ -114,12 +115,10 @@ npx supabase secrets set NOTIFY_SECRET=PASTE-THE-SAME-RANDOM-STRING WEB_URL=http
 npx supabase secrets set RESEND_API_KEY=re_xxx EMAIL_FROM="Leash <noreply@yourdomain.com>"
 ```
 
-```bash
-npx supabase functions deploy notify
-```
+Deploy all edge functions (`notify`, `magic-vote`, `weekly-digest`, `delete-account`):
 
 ```bash
-npx supabase functions deploy magic-vote
+npx supabase functions deploy
 ```
 
 Optional: if you turn on "Enhanced push security" in Expo, also set `EXPO_ACCESS_TOKEN`.
@@ -211,6 +210,37 @@ You only need a new EAS build when native config or dependencies change. JS chan
 
 ---
 
+## Ship to TestFlight
+
+Do this only after Apple has approved **Family Controls (Distribution)** for all four bundle IDs (see
+Prerequisites). Otherwise the build fails provisioning.
+
+1. Create the app in [App Store Connect](https://appstoreconnect.apple.com) → Apps → **+**, using
+   your bundle ID (`com.yourname.leash`).
+2. Give the **production** EAS environment the same public variables as development (`--environment production`),
+   including `EXPO_PUBLIC_WEB_URL`.
+3. Build in the cloud:
+
+```bash
+npx eas-cli@latest build --profile production --platform ios
+```
+
+4. Upload it to TestFlight. EAS asks for your Apple ID the first time:
+
+```bash
+npx eas-cli@latest submit --platform ios --latest
+```
+
+5. In App Store Connect → TestFlight, add yourself and your partners as testers.
+
+For the App Store listing you'll need:
+- **Privacy policy URL:** `https://<your-web-app>/privacy` (the page is already built).
+- **Account deletion:** already in the app (Settings → Delete account), which Apple requires.
+- **App Review notes:** explain that Leash uses Family Controls with *individual* authorization so a person
+  can restrict their own device, and give the reviewer a demo account with a partner.
+
+---
+
 ## Useful scripts
 
 | Command (repo root) | What |
@@ -220,6 +250,18 @@ You only need a new EAS build when native config or dependencies change. JS chan
 | `npm run typecheck` | Type-check all workspaces |
 | `npm run db:push` | Apply migrations to the linked Supabase project |
 | `npm run db:types` | Regenerate `packages/shared/src/database.types.ts` |
+| `deno test supabase/functions` | Unit tests for edge-function helpers |
+
+## Streaks & weekly digest (Phase 5)
+
+- `user_stats(user)` (SQL) returns the **current streak** (full days since your last approved extension,
+  counted in your time zone), your **best streak**, the last 7 days of requests, and how you behave as a
+  partner over 30 days. Only you and your accepted partners can read it.
+- Home (app) and the dashboard (web) show your streak. Partners see their friends' streaks.
+- Every Sunday at 17:43 UTC, `pg_cron` calls the `weekly-digest` function, which pushes (or emails) each
+  user a one-line summary of their week.
+- **Delete account** (app Settings or web `/settings`) calls the `delete-account` function. It verifies your
+  sign-in, tells your partners, and deletes everything.
 
 ---
 
