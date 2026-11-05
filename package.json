@@ -1,0 +1,18 @@
+{
+  "name": "screentime-accountability",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run start -w mobile",
+    "web": "npm run dev -w web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:push": "supabase db push",
+    "db:types": "supabase gen types typescript --linked > packages/shared/src/database.types.ts"
+  },
+  "devDependencies": {
+    "supabase": "^3.0.0"
+  }
+}
