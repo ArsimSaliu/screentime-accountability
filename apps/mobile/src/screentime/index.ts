@@ -66,6 +66,26 @@ function hash(s: string): string {
   return (h >>> 0).toString(36);
 }
 
+/**
+ * Minute-of-day (0–1440) at which an extension's re-block monitor should stop.
+ * Exported for tests. Reads the window saved by syncLimits (CONFIG_KEY = kind:minutes:start:end:hash).
+ */
+export function extensionEndFor(cfg: string | undefined, nowMinute: number): number {
+  const [kind, , start, end] = (cfg ?? '').split(':');
+  if (kind !== 'downtime') return 1440;
+  const s = Number(start);
+  const e = Number(end);
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return 1440;
+  if (e === 0 || s === e) return 1440; // window ends at midnight
+  // Before the window's end time (same-day window, or the morning part of one that crosses
+  // midnight) the block ends at `e`; otherwise it runs to midnight.
+  return nowMinute < e ? e : 1440;
+}
+
+function extensionEndMinute(limitId: string, nowMinute: number): number {
+  return extensionEndFor(RNDA.userDefaultsGet<string>(CONFIG_KEY(limitId)), nowMinute);
+}
+
 const DAY_SCHEDULE = {
   intervalStart: { hour: 0, minute: 0, second: 0 },
   intervalEnd: { hour: 23, minute: 59, second: 59 },
@@ -272,11 +292,7 @@ export const ScreenTime = {
     }
     const ids = limitId ? [limitId] : limitIdsOnDevice();
     const now = new Date();
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 0);
-    // DeviceActivity rejects intervals shorter than 15 minutes; the midnight reset
-    // unshields anyway, so just unblock if the day is almost over.
-    const canSchedule = endOfDay.getTime() - now.getTime() >= 15 * 60_000;
+    const nowMinute = now.getHours() * 60 + now.getMinutes();
 
     for (const id of ids) {
       const token = this.getSelection(id);
@@ -284,7 +300,14 @@ export const ScreenTime = {
 
       RNDA.stopMonitoring([extActivity(id)]);
       RNDA.unblockSelection({ activitySelectionId: selectionId(id) }, `leash:extension:${requestId}`);
-      if (!canSchedule) continue;
+
+      // The re-block monitor must stop when the block would have ended anyway: midnight for
+      // daily limits, the end of the current window for downtime (otherwise it could
+      // re-shield apps in the middle of the day, after downtime is over).
+      const endMinute = extensionEndMinute(id, nowMinute);
+      // DeviceActivity rejects intervals under 15 minutes; the block ends soon anyway, so
+      // just leave the apps unblocked until then.
+      if (endMinute - nowMinute < 15) continue;
 
       RNDA.configureActions({
         activityName: extActivity(id),
@@ -296,7 +319,7 @@ export const ScreenTime = {
         extActivity(id),
         {
           intervalStart: { hour: now.getHours(), minute: now.getMinutes(), second: now.getSeconds() },
-          intervalEnd: { hour: 23, minute: 59, second: 59 },
+          intervalEnd: endMinute >= 1440 ? { hour: 23, minute: 59, second: 59 } : clock(endMinute),
           repeats: false,
         },
         [{ eventName: EXT_EVENT, familyActivitySelection: token, threshold: duration(minutes) }],
