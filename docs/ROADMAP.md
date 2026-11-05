@@ -15,9 +15,18 @@ Phases 1–5 are described in the README. This file tracks what's next.
 | 7 | Badges for streaks and partner help | ✅ done |
 | 8 | Haptics on key actions | ✅ done |
 
+## Phase 7: closing the gaps
+
+| Feature | Status |
+|---|---|
+| Home-screen and lock-screen widget (WidgetKit) | ✅ done |
+| Universal links: invite links open the app | ✅ done |
+| Invite links survive sign-in / onboarding | ✅ done |
+| Xcode compile check on GitHub's macOS runners | ✅ done |
+
 ## Later ideas
 
-- Home-screen widget and Live Activity ("waiting for approval…"), which need custom SwiftUI targets
+- Live Activity for "waiting for approval…" (needs push-to-start ActivityKit tokens from the server)
 - Apple Watch approvals
 - Android version (UsageStatsManager + AccessibilityService)
 - Group challenges ("whole friend group under 2 h/day this week")

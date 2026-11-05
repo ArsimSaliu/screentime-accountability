@@ -24,7 +24,8 @@ supabase/
 | 4 | Hardening: loosening takes 24 h, partner-removal cooldown, emergency unlock, tamper alerts | ✅ done |
 | 5 | Streaks & stats, weekly digest, account deletion, privacy policy, TestFlight setup | ✅ done |
 | 6 | Invite links, counter-offers, nudges, bedtime/downtime limits, onboarding checklist, quick reasons, badges, haptics | ✅ done |
-| 7 | Widget, Live Activity, Apple Watch, Android: see [docs/ROADMAP.md](docs/ROADMAP.md) | ideas |
+| 7 | Home/lock-screen widget, universal-link invites, sign-in-safe invites, Xcode CI on GitHub's Macs | ✅ done |
+| 8 | Live Activity, Apple Watch, Android: see [docs/ROADMAP.md](docs/ROADMAP.md) | ideas |
 
 Without Screen Time access (Expo Go, simulator, or before Apple approves the entitlement), the app's
 **"Request more time"** button still works, so you can test the whole approval loop end to end.
@@ -63,6 +64,7 @@ vote on their own request, vote twice, vote after expiry, or edit someone else's
   https://developer.apple.com/contact/request/family-controls-distribution
   Once approved, enable "Family Controls (Distribution)" for each identifier at
   developer.apple.com → Identifiers. EAS handles provisioning after that.
+  (The fifth target, the widget `com.yourname.leash.LeashWidget`, only needs the App Group, which EAS sets up.)
 - Optional: [Resend](https://resend.com) for the email approval links
 
 ```bash
@@ -143,7 +145,9 @@ npm run web
 ```
 
 Open http://localhost:3000. **Deploy:** import the repo in Vercel, set **Root Directory = `apps/web`**,
-and add the same two `NEXT_PUBLIC_*` env vars.
+and add the same two `NEXT_PUBLIC_*` env vars. For invite links that open the app, also add
+`APPLE_APP_ID` = `<Apple Team ID>.<bundle id>` (e.g. `ABCDE12345.com.alexk.leash`). The site then serves
+`/.well-known/apple-app-site-association`.
 
 ### 3. iOS app (no Mac needed)
 
@@ -253,6 +257,23 @@ For the App Store listing you'll need:
 | `npm run db:types` | Regenerate `packages/shared/src/database.types.ts` |
 | `npm run test:db` | Run every migration on in-memory Postgres and test the rules (no Docker needed) |
 | `npm run test:functions` | Unit tests for edge-function helpers (needs [Deno](https://deno.com)) |
+
+## Widget, universal links & Xcode CI (Phase 7)
+
+- **Widget** (`apps/mobile/targets/LeashWidget`, SwiftUI/WidgetKit, iOS 17+): small and medium home-screen
+  sizes plus lock-screen inline, circular and rectangular. It shows your streak, a pending request with a live
+  countdown, and your downtime window. Tapping it opens the app, or the pending request. The app writes the
+  data to the shared App Group (`src/lib/widget.ts`) and refreshes the widget when something changes.
+- **Invite links open the app:** when `EXPO_PUBLIC_WEB_URL` is set in the EAS environment, `app.config.ts`
+  adds `applinks:<your web host>`. With `APPLE_APP_ID` set on Vercel, iOS opens `https://<web>/join/<code>`
+  straight in Leash.
+- **Signed-out invites:** an invite link opened before signing in is remembered and opened right after
+  sign-in and onboarding.
+- **Xcode without a Mac:** `.github/workflows/ios-build.yml` runs on a GitHub-hosted Mac on every push that
+  touches the mobile app. It runs `expo prebuild` and an unsigned simulator `xcodebuild` of the app, the
+  three Screen Time extensions and the widget. Check the **Actions** tab on GitHub. It's a free compile check
+  for native/Swift changes before you spend an EAS build. You can also run it by hand: Actions →
+  *iOS build (Xcode)* → *Run workflow*.
 
 ## Growth & UX features (Phase 6)
 
