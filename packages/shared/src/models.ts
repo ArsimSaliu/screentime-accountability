@@ -21,7 +21,7 @@ export type ProfileSummary = Pick<Profile, 'id' | 'username' | 'display_name'>;
 export type RequestWithDetails = ExtensionRequest & {
   requester: ProfileSummary | null;
   limit: Pick<Limit, 'id' | 'name' | 'kind' | 'minutes' | 'strictness'> | null;
-  votes: (Pick<RequestVote, 'voter_id' | 'decision' | 'comment' | 'created_at'> & {
+  votes: (Pick<RequestVote, 'voter_id' | 'decision' | 'comment' | 'created_at' | 'minutes'> & {
     voter: ProfileSummary | null;
   })[];
 };
@@ -31,7 +31,7 @@ export const REQUEST_DETAILS_SELECT = `
   *,
   requester:profiles!extension_requests_requester_id_fkey(id, username, display_name),
   limit:limits(id, name, kind, minutes, strictness),
-  votes:request_votes(voter_id, decision, comment, created_at, voter:profiles(id, username, display_name))
+  votes:request_votes(voter_id, decision, comment, created_at, minutes, voter:profiles(id, username, display_name))
 ` as const;
 
 /** partnerships row with both sides embedded. */
@@ -86,7 +86,18 @@ export type PendingLimitChange = {
   strictness?: Strictness;
   active?: boolean;
   kind?: LimitKind;
+  start_minute?: number | null;
+  end_minute?: number | null;
 };
+
+/** Public preview of an invite link (returned by `invite_link_info`). */
+export type InviteLinkInfo = { username: string; display_name: string | null; expired: boolean } | null;
+
+/** One-tap reasons on the request form. */
+export const REASON_TEMPLATES = ['Work', 'School', 'Navigation', 'Family call', 'Paying a bill', 'Winding down'] as const;
+
+/** Counter-offer choices shown to partners (filtered to below the requested amount). */
+export const COUNTER_OFFER_OPTIONS = [5, 10, 15, 30] as const;
 
 export const EMERGENCY_MAX_MINUTES = 15;
 

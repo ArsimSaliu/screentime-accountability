@@ -94,6 +94,8 @@ export type Database = {
           created_at: string;
           pending_change: Json | null;
           pending_effective_at: string | null;
+          start_minute: number | null;
+          end_minute: number | null;
         };
         Insert: {
           id?: string;
@@ -107,6 +109,8 @@ export type Database = {
           created_at?: string;
           pending_change?: Json | null;
           pending_effective_at?: string | null;
+          start_minute?: number | null;
+          end_minute?: number | null;
         };
         Update: {
           id?: string;
@@ -120,6 +124,8 @@ export type Database = {
           created_at?: string;
           pending_change?: Json | null;
           pending_effective_at?: string | null;
+          start_minute?: number | null;
+          end_minute?: number | null;
         };
         Relationships: [
           {
@@ -145,6 +151,7 @@ export type Database = {
           decided_at: string | null;
           created_at: string;
           emergency: boolean;
+          reminded_at: string | null;
         };
         Insert: {
           id?: string;
@@ -159,6 +166,7 @@ export type Database = {
           decided_at?: string | null;
           created_at?: string;
           emergency?: boolean;
+          reminded_at?: string | null;
         };
         Update: {
           id?: string;
@@ -173,6 +181,7 @@ export type Database = {
           decided_at?: string | null;
           created_at?: string;
           emergency?: boolean;
+          reminded_at?: string | null;
         };
         Relationships: [
           {
@@ -198,6 +207,7 @@ export type Database = {
           decision: string;
           comment: string | null;
           created_at: string;
+          minutes: number | null;
         };
         Insert: {
           request_id: string;
@@ -205,6 +215,7 @@ export type Database = {
           decision: string;
           comment?: string | null;
           created_at?: string;
+          minutes?: number | null;
         };
         Update: {
           request_id?: string;
@@ -212,6 +223,7 @@ export type Database = {
           decision?: string;
           comment?: string | null;
           created_at?: string;
+          minutes?: number | null;
         };
         Relationships: [
           {
@@ -252,6 +264,12 @@ export type Database = {
           platform?: string;
           created_at?: string;
         };
+        Relationships: [];
+      };
+      invite_links: {
+        Row: { code: string; owner_id: string; created_at: string; expires_at: string; uses: number };
+        Insert: { code: string; owner_id: string; created_at?: string; expires_at?: string; uses?: number };
+        Update: { code?: string; owner_id?: string; created_at?: string; expires_at?: string; uses?: number };
         Relationships: [];
       };
       tamper_events: {
@@ -299,6 +317,9 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       accept_invite: { Args: { p_partnership: string }; Returns: undefined };
+      accept_invite_link: { Args: { p_code: string }; Returns: string };
+      create_invite_link: { Args: Record<PropertyKey, never>; Returns: string };
+      invite_link_info: { Args: { p_code: string }; Returns: Json };
       cancel_partner_removal: { Args: { p_partnership: string }; Returns: undefined };
       cancel_request: { Args: { p_request: string }; Returns: undefined };
       emergency_unlock: { Args: { p_minutes: number; p_reason: string; p_limit?: string | null }; Returns: string };
@@ -311,7 +332,7 @@ export type Database = {
       user_stats: { Args: { p_user: string }; Returns: Json };
     };
     Enums: {
-      limit_kind: 'daily' | 'session';
+      limit_kind: 'daily' | 'session' | 'downtime';
       request_status: 'pending' | 'approved' | 'denied' | 'expired' | 'cancelled';
       strictness: 'relaxed' | 'standard' | 'strict' | 'locked';
     };

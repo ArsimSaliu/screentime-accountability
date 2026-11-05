@@ -40,6 +40,11 @@ export function describePendingChange(limit: Pick<Limit, 'pending_change'>): str
   if (c.approvals_required !== undefined) parts.push(`approvals → ${c.approvals_required}`);
   if (c.active === false) parts.push('pause');
   if (c.kind === 'session') parts.push('switch to per-session');
+  if (c.kind === 'daily') parts.push('switch to a daily total');
+  if (c.kind === 'downtime') parts.push('switch to downtime');
+  if (c.start_minute != null && c.end_minute != null) {
+    parts.push(`window → ${formatClock(c.start_minute)}–${formatClock(c.end_minute)}`);
+  }
   return parts.length ? parts.join(', ') : null;
 }
 
@@ -55,4 +60,24 @@ export function summarizeWeek(stats: UserStats): string {
   if (w.minutes_granted) parts.push(`${formatMinutes(w.minutes_granted)} extra`);
   if (w.emergencies) parts.push(`${w.emergencies} emergency`);
   return parts.join(' · ');
+}
+
+/** Minutes after midnight -> "22:00". */
+export function formatClock(minute: number): string {
+  const h = Math.floor(minute / 60) % 24;
+  const m = minute % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Length of a downtime window in minutes (handles windows that cross midnight). */
+export function windowLength(start: number, end: number): number {
+  return (end - start + 1440) % 1440 || 1440;
+}
+
+/** "60 min per day" / "22:00–07:00 every night" etc. */
+export function describeLimit(l: Pick<Limit, 'kind' | 'minutes' | 'start_minute' | 'end_minute'>): string {
+  if (l.kind === 'downtime' && l.start_minute != null && l.end_minute != null) {
+    return `Blocked ${formatClock(l.start_minute)}–${formatClock(l.end_minute)} every day`;
+  }
+  return `${formatMinutes(l.minutes)} ${l.kind === 'daily' ? 'per day' : 'per session'}`;
 }

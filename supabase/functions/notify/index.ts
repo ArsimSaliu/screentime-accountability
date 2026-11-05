@@ -27,8 +27,19 @@ Deno.serve(async (req) => {
       await onEmergencyUnlock(payload.record);
     } else if (payload.table === 'extension_requests' && payload.type === 'INSERT') {
       await onRequestCreated(payload.record);
+    } else if (
+      payload.table === 'extension_requests' &&
+      payload.type === 'UPDATE' &&
+      payload.record.status === 'pending' &&
+      payload.record.reminded_at &&
+      !payload.old_record?.reminded_at
+    ) {
+      await onRequestReminder(payload.record);
     } else if (payload.table === 'extension_requests' && payload.type === 'UPDATE') {
       await onRequestResolved(payload.record);
+    } else if (payload.table === 'partnerships' && payload.type === 'INSERT' && payload.record.status === 'accepted') {
+      // Joined through an invite link: already accepted.
+      await onInviteAccepted(payload.record);
     } else if (payload.table === 'partnerships' && payload.type === 'INSERT') {
       await onInviteCreated(payload.record);
     } else if (payload.table === 'partnerships' && payload.type === 'UPDATE') {
@@ -168,12 +179,35 @@ async function onRequestCreated(request: Record<string, any>) {
   );
 }
 
+/** Nudge partners who haven't answered a request that's been waiting a few minutes. */
+async function onRequestReminder(request: Record<string, any>) {
+  const [{ data: partners }, { data: votes }] = await Promise.all([
+    admin.from('partnerships').select('partner_id').eq('owner_id', request.requester_id).eq('status', 'accepted'),
+    admin.from('request_votes').select('voter_id').eq('request_id', request.id),
+  ]);
+  const voted = new Set((votes ?? []).map((v) => v.voter_id as string));
+  const waiting = (partners ?? []).map((p) => p.partner_id as string).filter((id) => !voted.has(id));
+  if (!waiting.length) return;
+
+  const name = displayName(await getProfile(request.requester_id));
+  const minsLeft = Math.max(1, Math.round((new Date(request.expires_at).getTime() - Date.now()) / 60000));
+  await pushToUsers(waiting, {
+    title: `${name} is still waiting ⏳`,
+    body: `${request.minutes_requested} more minutes? The request expires in ${minsLeft} min.`,
+    categoryId: TIME_REQUEST_CATEGORY,
+    data: { kind: 'request_created', requestId: request.id },
+  });
+}
+
 async function onRequestResolved(request: Record<string, any>) {
   const status = request.status as string;
   const messages: Record<string, { title: string; body: string }> = {
     approved: {
       title: 'Approved ✅',
-      body: `You've got ${request.minutes_granted ?? request.minutes_requested} more minutes. Tap to unlock.`,
+      body:
+        request.minutes_granted && request.minutes_granted < request.minutes_requested
+          ? `Your partners offered ${request.minutes_granted} of the ${request.minutes_requested} minutes you asked for. Tap to unlock.`
+          : `You've got ${request.minutes_granted ?? request.minutes_requested} more minutes. Tap to unlock.`,
     },
     denied: { title: 'Request denied', body: 'Your partners said no this time. Hang in there.' },
     expired: { title: 'Request expired', body: 'Nobody responded in time.' },

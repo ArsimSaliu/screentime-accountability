@@ -10,9 +10,12 @@
     "web": "npm run dev -w web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:push": "supabase db push",
-    "db:types": "supabase gen types typescript --linked > packages/shared/src/database.types.ts"
+    "db:types": "supabase gen types typescript --linked > packages/shared/src/database.types.ts",
+    "test:db": "node supabase/tests/core.test.mjs && node supabase/tests/phase6.test.mjs",
+    "test:functions": "deno test supabase/functions"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
     "supabase": "^3.0.0"
   }
 }

@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  let body: { token?: string; decision?: string; comment?: string };
+  let body: { token?: string; decision?: string; comment?: string; minutes?: number };
   try {
     body = await req.json();
   } catch {
@@ -22,6 +22,11 @@ Deno.serve(async (req) => {
     return json({ error: 'Invalid decision' }, 400);
   }
   const comment = typeof body.comment === 'string' ? body.comment.trim().slice(0, 280) || null : null;
+  // Counter-offer: approve fewer minutes than requested (the DB clamps to the request).
+  const minutes =
+    body.decision === 'approve' && Number.isInteger(body.minutes) && body.minutes! >= 1 && body.minutes! <= 240
+      ? body.minutes!
+      : null;
 
   const { data: tok } = await admin
     .from('vote_tokens')
@@ -85,6 +90,7 @@ Deno.serve(async (req) => {
     voter_id: tok.voter_id,
     decision: body.decision,
     comment,
+    minutes,
   });
   if (voteErr) {
     if (voteErr.code === '23505') return json({ error: 'You already voted on this request.' }, 409);
