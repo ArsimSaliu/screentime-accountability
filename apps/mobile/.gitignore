@@ -43,3 +43,6 @@ yarn-error.*
 # env (keep the example)
 .env
 !.env.example
+
+# copied from react-native-device-activity by its config plugin on every prebuild
+/targets

@@ -8,21 +8,21 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.CHANGE_ME.leash",
+      "bundleIdentifier": "com.yourname.leash",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "entitlements": {
-        "com.apple.security.application-groups": ["group.com.CHANGE_ME.leash"]
-      }
+      "appleTeamId": "YOUR_APPLE_TEAM_ID"
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       [
-        "expo-notifications",
+        "react-native-device-activity",
         {
-          "enableBackgroundRemoteNotifications": false
+          "appleTeamId": "YOUR_APPLE_TEAM_ID",
+          "appGroup": "group.com.yourname.leash"
         }
       ]
     ],

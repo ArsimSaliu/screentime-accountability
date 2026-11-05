@@ -87,10 +87,10 @@ function RequesterView({ request }: { request: RequestWithDetails }) {
     const key = `granted:${request.id}`;
     void AsyncStorage.getItem(key).then(async (done) => {
       if (done) return;
-      await ScreenTime.grantExtension(request.id, request.minutes_granted!);
+      await ScreenTime.grantExtension(request.id, request.minutes_granted!, request.limit_id);
       await AsyncStorage.setItem(key, new Date().toISOString());
     });
-  }, [request.id, request.status, request.minutes_granted]);
+  }, [request.id, request.status, request.minutes_granted, request.limit_id]);
 
   async function cancel() {
     setCancelling(true);

@@ -2,11 +2,13 @@ import { limitFormSchema, STRICTNESS_INFO, type LimitForm, type Strictness } fro
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Switch, View } from 'react-native';
+import { AppPicker } from '../../components/AppPicker';
 import { useTheme } from '../../components/theme';
 import { Body, Button, Chips, Field, Loading, Screen, SectionTitle } from '../../components/ui';
-import { deleteLimit, getLimit, saveLimit } from '../../lib/api';
+import { deleteLimit, getLimit, listMyLimits, saveLimit } from '../../lib/api';
 import { useUserId } from '../../lib/auth';
 import { friendlyError } from '../../lib/supabase';
+import { ScreenTime } from '../../screentime';
 
 const STRICTNESS: Strictness[] = ['relaxed', 'standard', 'strict', 'locked'];
 const MINUTE_PRESETS = [15, 30, 60, 90, 120, 180] as const;
@@ -19,6 +21,7 @@ export default function EditLimit() {
   const t = useTheme();
   const [form, setForm] = useState<LimitForm>(EMPTY);
   const [active, setActive] = useState(true);
+  const [selection, setSelection] = useState<string | null>(() => (id ? ScreenTime.getSelection(id) : null));
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,9 +50,12 @@ export default function EditLimit() {
   async function save() {
     const parsed = limitFormSchema.safeParse(form);
     if (!parsed.success) return setError(parsed.error.issues[0].message);
+    if (ScreenTime.isAvailable && !selection) return setError('Choose which apps this limit covers');
     setBusy(true);
     try {
-      await saveLimit(userId, { ...parsed.data, ...(id ? { active } : {}) } as LimitForm, id);
+      const limitId = await saveLimit(userId, id ? { ...parsed.data, active } : parsed.data, id);
+      if (selection) ScreenTime.saveSelection(limitId, selection);
+      await ScreenTime.syncLimits(await listMyLimits(userId));
       router.back();
     } catch (e) {
       setError(friendlyError(e));
@@ -64,7 +70,11 @@ export default function EditLimit() {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () => deleteLimit(id).then(() => router.back(), (e) => setError(friendlyError(e))),
+        onPress: () =>
+          deleteLimit(id)
+            .then(() => listMyLimits(userId))
+            .then((limits) => ScreenTime.syncLimits(limits))
+            .then(() => router.back(), (e) => setError(friendlyError(e))),
       },
     ]);
   }
@@ -81,6 +91,9 @@ export default function EditLimit() {
         error={error}
       />
 
+      <SectionTitle>Apps</SectionTitle>
+      <AppPicker value={selection} onChange={setSelection} />
+
       <SectionTitle>Type</SectionTitle>
       <Chips
         options={['daily', 'session'] as const}
@@ -88,6 +101,9 @@ export default function EditLimit() {
         onChange={(v) => set('kind', v)}
         format={(v) => (v === 'daily' ? 'Daily total' : 'Per session')}
       />
+      {form.kind === 'session' && (
+        <Body muted>Per-session blocking isn’t supported by iOS yet. This limit is saved but won’t block apps.</Body>
+      )}
 
       <SectionTitle>Minutes</SectionTitle>
       <Chips options={MINUTE_PRESETS} value={form.minutes as never} onChange={(v) => set('minutes', v)} />

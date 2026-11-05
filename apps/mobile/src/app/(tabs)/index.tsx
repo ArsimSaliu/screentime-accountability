@@ -7,6 +7,7 @@ import {
   type RequestWithDetails,
 } from '@screentime/shared';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useTheme } from '../../components/theme';
 import { Body, Button, Card, ErrorText, Screen, SectionTitle, StatusPill } from '../../components/ui';
@@ -14,7 +15,7 @@ import { useAsync } from '../../hooks/useAsync';
 import { useRealtime } from '../../hooks/useRealtime';
 import { countAcceptedPartners, listMyLimits, listMyRequests } from '../../lib/api';
 import { useAuth, useUserId } from '../../lib/auth';
-import { ScreenTime } from '../../screentime';
+import { ScreenTime, type ScreenTimeStatus } from '../../screentime';
 
 export default function Home() {
   const userId = useUserId();
@@ -31,21 +32,21 @@ export default function Home() {
   useRealtime('extension_requests', reload, `requester_id=eq.${userId}`);
 
   const active = data?.requests.find((r) => r.status === 'pending');
+  const [stStatus, setStStatus] = useState<ScreenTimeStatus>(() => ScreenTime.getAuthorizationStatus());
+
+  // Keep the device's monitors/shields in sync with the limits stored on the server.
+  useEffect(() => {
+    if (data && stStatus === 'approved') {
+      ScreenTime.syncLimits(data.limits).catch((e) => console.warn('syncLimits failed', e));
+    }
+  }, [data, stStatus]);
 
   return (
     <Screen onRefresh={reload}>
       <Body muted>Hi {displayName(profile)} 👋</Body>
       <ErrorText error={error} />
 
-      {!ScreenTime.isAvailable && (
-        <Card>
-          <Body style={{ fontWeight: '700' }}>Screen Time not connected yet</Body>
-          <Body muted>
-            App blocking arrives in Phase 3. For now you can set limits, add partners and test the approval flow
-            with the button below.
-          </Body>
-        </Card>
-      )}
+      <ScreenTimeCard status={stStatus} onConnect={async () => setStStatus(await ScreenTime.requestAuthorization())} />
 
       {active ? (
         <ActiveRequestCard request={active} />
@@ -79,6 +80,32 @@ export default function Home() {
   );
 }
 
+function ScreenTimeCard({ status, onConnect }: { status: ScreenTimeStatus; onConnect: () => void }) {
+  if (status === 'approved') return null;
+  if (status === 'unsupported') {
+    return (
+      <Card>
+        <Body style={{ fontWeight: '700' }}>App blocking unavailable here</Body>
+        <Body muted>
+          Blocking needs the development build on an iPhone. You can still set limits, add partners and test
+          requests.
+        </Body>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <Body style={{ fontWeight: '700' }}>Connect Screen Time</Body>
+      <Body muted>
+        {status === 'denied'
+          ? 'Screen Time access was denied. Allow it so your limits can block apps.'
+          : 'Allow Screen Time access so your limits can block apps. Only you can see which apps you pick.'}
+      </Body>
+      <Button title="Allow Screen Time access" onPress={onConnect} />
+    </Card>
+  );
+}
+
 function LimitRow({ limit }: { limit: Limit }) {
   const t = useTheme();
   return (
@@ -92,6 +119,7 @@ function LimitRow({ limit }: { limit: Limit }) {
           {limit.kind === 'daily' ? 'Per day' : 'Per session'} · {STRICTNESS_INFO[limit.strictness].label}
           {limit.active ? '' : ' · paused'}
         </Body>
+        {ScreenTime.isAvailable && <Body muted>{ScreenTime.describeSelection(ScreenTime.getSelection(limit.id))}</Body>}
       </Card>
     </Pressable>
   );

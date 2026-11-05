@@ -25,12 +25,19 @@ export async function getLimit(id: string): Promise<Limit | null> {
   return unwrap(await supabase.from('limits').select('*').eq('id', id).maybeSingle());
 }
 
-export async function saveLimit(userId: string, form: LimitForm, id?: string): Promise<void> {
+/** Create or update a limit; returns its id. */
+export async function saveLimit(userId: string, form: LimitForm & { active?: boolean }, id?: string): Promise<string> {
   if (id) {
     unwrap(await supabase.from('limits').update(form).eq('id', id));
-  } else {
-    unwrap(await supabase.from('limits').insert({ ...form, user_id: userId }));
+    return id;
   }
+  const { data, error } = await supabase
+    .from('limits')
+    .insert({ ...form, user_id: userId })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
 }
 
 export async function deleteLimit(id: string): Promise<void> {

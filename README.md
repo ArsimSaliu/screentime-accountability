@@ -20,12 +20,12 @@ supabase/
 |---|---|---|
 | 1 | Monorepo, Supabase schema + auth, mobile + web sign-in | ✅ done |
 | 2 | Partners, requests, push notifications, approve/deny on app, web and email link, realtime | ✅ done |
-| 3 | Real Screen Time blocking (FamilyControls / DeviceActivity / ManagedSettings) | ⏳ next, needs Apple entitlement |
+| 3 | Real Screen Time blocking (FamilyControls / DeviceActivity / ManagedSettings) | ✅ code done, needs Apple entitlement to run on a device |
 | 4 | Hardening: tamper alerts, "loosening takes 24 h", break-glass override | planned |
 | 5 | Analytics, streaks, widgets, TestFlight / App Store | planned |
 
-Until Phase 3, the app's **"Request more time"** button simulates hitting a limit,
-so you can test the whole approval loop end to end.
+Without Screen Time access (Expo Go, simulator, or before Apple approves the entitlement), the app's
+**"Request more time"** button still works, so you can test the whole approval loop end to end.
 
 ---
 
@@ -40,7 +40,7 @@ so you can test the whole approval loop end to end.
 3. A partner votes (`request_votes` insert, protected by RLS). The `resolve_request` trigger
    marks the request **approved** or **denied** once the outcome is certain.
 4. The requester's screen updates live (Supabase Realtime) and they also get a push.
-   In Phase 3 the app lifts the shield for the granted minutes.
+   The app lifts the shield and re-blocks after the granted minutes of use.
 5. `pg_cron` expires unanswered requests every minute.
 
 Security is enforced in the database, not the apps: clients cannot set a request's status,
@@ -55,8 +55,12 @@ vote on their own request, vote twice, vote after expiry, or edit someone else's
 - Node.js 22 LTS, Git (`git config --system core.longpaths true` in an admin shell)
 - Accounts: [Supabase](https://supabase.com), [Expo](https://expo.dev), [Vercel](https://vercel.com),
   [Apple Developer Program](https://developer.apple.com/programs/) ($99/yr)
-- **Request the Family Controls entitlement now** (needed for Phase 3, approval takes time):
+- **Request the Family Controls (Distribution) entitlement now.** Approval takes time, and you need it for
+  **all four** bundle IDs: `com.yourname.leash`, `com.yourname.leash.ActivityMonitorExtension`,
+  `com.yourname.leash.ShieldAction`, `com.yourname.leash.ShieldConfiguration`:
   https://developer.apple.com/contact/request/family-controls-distribution
+  Once approved, enable "Family Controls (Distribution)" for each identifier at
+  developer.apple.com → Identifiers. EAS handles provisioning after that.
 - Optional: [Resend](https://resend.com) for the email approval links
 
 ```bash
@@ -143,8 +147,9 @@ and add the same two `NEXT_PUBLIC_*` env vars.
 
 ### 3. iOS app (no Mac needed)
 
-1. In `apps/mobile/app.json`, replace `CHANGE_ME` in `bundleIdentifier` and the App Group
-   with your own reverse-domain name (for example `com.alexk.leash`).
+1. In `apps/mobile/app.json`, replace `com.yourname.leash` (in `ios.bundleIdentifier` and the
+   `appGroup` of the `react-native-device-activity` plugin) with your own reverse-domain name, for example
+   `com.alexk.leash`, and set both `YOUR_APPLE_TEAM_ID` values (developer.apple.com → Membership).
 2. Create the env file:
 
 ```bash
@@ -198,7 +203,9 @@ You only need a new EAS build when native config or dependencies change. JS chan
 
 1. Sign in on the phone as **you**, and on the website (another browser) as a **friend**.
 2. Phone → Partners → invite the friend's username. The friend accepts on the web `/partners` page.
-3. Phone → Home → add a limit → **Request more time**.
+3. Phone → Home → **Allow Screen Time access** → add a daily limit, choose apps and set a few minutes.
+   Use one of those apps until the shield appears, then tap **Ask for more time**. (Without Screen Time
+   access, just tap **Request more time** on Home.)
 4. The friend sees it on the dashboard (or gets a push/email) and approves.
 5. The phone's request screen flips to **Approved** live.
 
@@ -216,22 +223,30 @@ You only need a new EAS build when native config or dependencies change. JS chan
 
 ---
 
-## Phase 3 plan: Screen Time
+## How app blocking works (Phase 3)
 
-The integration point is already stubbed: `apps/mobile/src/screentime/index.ts`
-(`ScreenTime.grantExtension()` is called when a request is approved).
+All of it is in `apps/mobile/src/screentime/index.ts`, built on
+[`react-native-device-activity`](https://github.com/kingstinct/react-native-device-activity). Its config plugin
+generates the three iOS extensions (ActivityMonitor, ShieldConfiguration, ShieldAction) during the EAS build.
 
-1. Add [`react-native-device-activity`](https://github.com/kingstinct/react-native-device-activity)
-   with its config plugin. It generates the DeviceActivityMonitor, ShieldConfiguration and
-   ShieldAction extension targets and shares state through the App Group.
-2. Request `.individual` FamilyControls authorization, then show the `FamilyActivityPicker`
-   in the limit editor and store the opaque selection on-device, keyed by limit id.
-3. For each limit, schedule a DeviceActivity event at the limit's minutes. The monitor extension shields
-   the selected apps when it fires.
-4. Shield button "Request more time" → local notification → opens `/request/new`.
-5. On approval, `grantExtension` clears the shield and schedules a one-off threshold for the granted
-   minutes, after which the monitor re-shields.
-6. Tamper signals: report authorization revocation to the server and alert partners.
+- **Authorization:** `.individual` FamilyControls, for restricting yourself rather than a child.
+- **Choosing apps:** the limit editor opens Apple's picker. The selection is an opaque token stored in
+  the App Group under `limit_<id>`. App names never leave the phone, so the web dashboard shows only
+  your limit's name.
+- **Daily limits:** each one is a repeating 00:00–23:59 DeviceActivity monitor. When usage reaches the
+  limit, the monitor extension shields the apps, even with Leash closed. At midnight it unshields them.
+- **Shield:** a custom screen with **Ask for more time**. Tapping it posts a local notification that
+  opens the request form. Apple doesn't let a shield open an app directly.
+- **Approved extension:** the shield is lifted and a one-off `limit_<id>_ext` monitor re-shields after
+  the granted minutes of *actual use*. A "General" request applies to every limit.
+- **Sync:** Home calls `syncLimits()` so the phone matches the server. A monitor only restarts when that
+  limit's minutes or apps change, so an active extension isn't wiped.
+
+Known limits:
+- **Per-session limits are saved but don't block yet.** iOS has no notion of an "app session".
+- **The app doesn't stop you from weakening your own limits yet:** you can still delete or pause
+  a limit, or revoke Screen Time access. Phase 4 adds "loosening takes effect after 24 h" and tamper
+  alerts to your partners.
 
 **Tip:** keep your brother's iOS Screen Time passcode protecting *Screen Time settings* and
 *Deleting Apps*. That stops you from simply revoking the app's access, while Leash handles

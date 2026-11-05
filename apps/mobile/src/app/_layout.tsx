@@ -14,6 +14,7 @@ import { castVote } from '../lib/api';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { configureNotifications, registerForPushNotifications } from '../lib/notifications';
 import { friendlyError } from '../lib/supabase';
+import { SHIELD_REQUEST_CATEGORY } from '../screentime';
 
 configureNotifications();
 
@@ -79,7 +80,15 @@ function SignedInEffects({ userId }: { userId: string }) {
     if (handled.current === key) return;
     handled.current = key;
 
-    const data = lastResponse.notification.request.content.data as PushData | undefined;
+    const content = lastResponse.notification.request.content;
+    if (content.categoryIdentifier === SHIELD_REQUEST_CATEGORY) {
+      // Sent by the ShieldAction extension when "Ask for more time" is tapped on a blocked app.
+      router.push('/request/new');
+      Notifications.clearLastNotificationResponse();
+      return;
+    }
+
+    const data = content.data as PushData | undefined;
     if (!data?.kind) return;
 
     if (data.kind === 'request_created' || data.kind === 'request_resolved') {
